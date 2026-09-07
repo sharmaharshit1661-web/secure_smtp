@@ -9,7 +9,14 @@ import FindingCard from '../components/FindingCard';
 import CertChain from '../components/CertChain';
 import SeverityBadge from '../components/SeverityBadge';
 import Icon from '../components/Icon';
-import { getHosts, getHostDetail, getSessionDetail } from '../api/client';
+import {
+  getHosts,
+  getHostDetail,
+  getSessionDetail,
+  getCopilotRemediation,
+  getCopilotBriefing,
+  askCopilot,
+} from '../api/client';
 import { getTierColorRaw } from '../utils/colors';
 
 const TOOLTIP_STYLE = {
@@ -34,6 +41,75 @@ export default function SessionExplorer() {
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('handshake');
+  const [serverType, setServerType] = useState('postfix');
+  const [remediationData, setRemediationData] = useState(null);
+  const [remediationLoading, setRemediationLoading] = useState(false);
+  const [briefingData, setBriefingData] = useState(null);
+  const [briefingLoading, setBriefingLoading] = useState(false);
+  const [copilotQuery, setCopilotQuery] = useState('');
+  const [copilotAnswer, setCopilotAnswer] = useState(null);
+  const [copilotEngine, setCopilotEngine] = useState('');
+  const [copilotLoading, setCopilotLoading] = useState(false);
+  const [copiedConfig, setCopiedConfig] = useState(false);
+  const [copiedMemo, setCopiedMemo] = useState(false);
+
+  useEffect(() => {
+    setRemediationData(null);
+    setBriefingData(null);
+    setCopilotAnswer(null);
+  }, [selectedSessionId]);
+
+  const handleFetchRemediation = async (type = serverType) => {
+    if (!selectedSessionId) return;
+    setRemediationLoading(true);
+    try {
+      const res = await getCopilotRemediation(selectedSessionId, type);
+      setRemediationData(res);
+    } catch (err) {
+      console.error('Failed to get remediation:', err);
+    } finally {
+      setRemediationLoading(false);
+    }
+  };
+
+  const handleFetchBriefing = async () => {
+    if (!selectedSessionId) return;
+    setBriefingLoading(true);
+    try {
+      const res = await getCopilotBriefing(selectedSessionId);
+      setBriefingData(res);
+    } catch (err) {
+      console.error('Failed to get briefing:', err);
+    } finally {
+      setBriefingLoading(false);
+    }
+  };
+
+  const handleAskCopilot = async (queryText) => {
+    const q = queryText || copilotQuery;
+    if (!selectedSessionId || !q.trim()) return;
+    setCopilotLoading(true);
+    try {
+      const res = await askCopilot(selectedSessionId, q);
+      setCopilotAnswer(res.answer);
+      setCopilotEngine(res.engine);
+    } catch (err) {
+      console.error('Failed to query copilot:', err);
+    } finally {
+      setCopilotLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'copilot' && selectedSessionId) {
+      if (!remediationData) {
+        handleFetchRemediation(serverType);
+      }
+      if (!briefingData) {
+        handleFetchBriefing();
+      }
+    }
+  }, [activeTab, selectedSessionId]);
 
   // Fetch host list
   useEffect(() => {
@@ -311,6 +387,16 @@ export default function SessionExplorer() {
               >
                 <Icon name="chart" size={14} /> AI Risk Attribution (SHAP)
               </button>
+              <button
+                className={`tab ${activeTab === 'copilot' ? 'active' : ''}`}
+                onClick={() => setActiveTab('copilot')}
+                style={{
+                  background: activeTab === 'copilot' ? 'rgba(245, 158, 11, 0.15)' : undefined,
+                  borderColor: activeTab === 'copilot' ? 'var(--amber-signal)' : undefined,
+                }}
+              >
+                <span style={{ color: 'var(--amber-signal)', marginRight: '4px' }}>✨</span> AI Security Copilot
+              </button>
             </div>
 
             {/* Tab 1: TLS Handshake & Fingerprints */}
@@ -485,6 +571,284 @@ export default function SessionExplorer() {
                       <div className="text-secondary text-sm">No SHAP explanation vector available.</div>
                     )}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 5: AI Security Copilot */}
+            {activeTab === 'copilot' && (
+              <div className="flex flex-col gap-5">
+                {/* Section 1: Server Configuration Directives */}
+                <div
+                  className="card"
+                  style={{
+                    borderColor: 'var(--amber-signal)',
+                    background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, rgba(20, 24, 33, 0.6) 100%)',
+                  }}
+                >
+                  <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-3)' }}>
+                    <div className="flex items-center gap-2">
+                      <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                      <div>
+                        <div className="font-bold text-md text-primary">Autonomous Server Remediation Directives</div>
+                        <div className="text-secondary text-xs">Production-grade configuration fixes synthesized for your exact mail server daemon.</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <label className="text-secondary text-xs">Target Daemon:</label>
+                      <select
+                        className="select"
+                        style={{ width: '190px', padding: '6px 10px', fontSize: '12px' }}
+                        value={serverType}
+                        onChange={(e) => {
+                          setServerType(e.target.value);
+                          handleFetchRemediation(e.target.value);
+                        }}
+                      >
+                        <option value="postfix">Postfix (main.cf)</option>
+                        <option value="dovecot">Dovecot (10-ssl.conf)</option>
+                        <option value="exchange">Microsoft Exchange (PowerShell)</option>
+                        <option value="exim">Exim4 (exim4.conf)</option>
+                        <option value="sendmail">Sendmail (sendmail.mc)</option>
+                      </select>
+                      <button
+                        className="btn btn-primary"
+                        style={{ fontSize: '12px', padding: '6px 12px' }}
+                        onClick={() => handleFetchRemediation(serverType)}
+                        disabled={remediationLoading}
+                      >
+                        {remediationLoading ? 'Synthesizing...' : 'Generate Fix'}
+                      </button>
+                    </div>
+                  </div>
+
+                  {remediationData ? (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-mono text-muted">
+                          Target File: <strong className="text-accent">{remediationData.filepath}</strong>
+                        </span>
+                        <button
+                          className="btn btn-outline"
+                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                          onClick={() => {
+                            navigator.clipboard.writeText(remediationData.config_content);
+                            setCopiedConfig(true);
+                            setTimeout(() => setCopiedConfig(false), 2000);
+                          }}
+                        >
+                          {copiedConfig ? '✓ Copied Config!' : '📋 Copy Configuration'}
+                        </button>
+                      </div>
+
+                      <pre
+                        className="text-mono text-xs"
+                        style={{
+                          background: 'var(--bg-inset)',
+                          padding: '14px',
+                          borderRadius: '8px',
+                          overflowX: 'auto',
+                          maxHeight: '260px',
+                          lineHeight: '1.5',
+                          color: 'var(--text-primary)',
+                          border: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        {remediationData.config_content}
+                      </pre>
+
+                      {remediationData.commands && remediationData.commands.length > 0 && (
+                        <div>
+                          <div className="font-semibold text-xs text-secondary" style={{ marginBottom: '6px' }}>
+                            Deployment &amp; Verification Commands:
+                          </div>
+                          <pre
+                            className="text-mono text-xs"
+                            style={{
+                              background: 'var(--bg-inset)',
+                              padding: '10px 14px',
+                              borderRadius: '6px',
+                              color: 'var(--amber-signal)',
+                              border: '1px solid var(--border-subtle)',
+                            }}
+                          >
+                            {remediationData.commands.join('\n')}
+                          </pre>
+                        </div>
+                      )}
+
+                      {remediationData.resolved_findings && (
+                        <div className="flex items-center gap-2" style={{ marginTop: '4px' }}>
+                          <span className="text-xs text-muted">Remediates:</span>
+                          <div className="flex gap-1 flex-wrap">
+                            {remediationData.resolved_findings.map((fid) => (
+                              <span key={fid} className="badge badge-clean" style={{ fontSize: '10px' }}>
+                                ✓ {fid}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-secondary text-xs" style={{ padding: '12px 0' }}>
+                      Select your mail server software above or click &quot;Generate Fix&quot; to synthesize configuration directives.
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 2: Executive Incident Briefing Memo */}
+                <div className="card">
+                  <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-3)' }}>
+                    <div className="flex items-center gap-2">
+                      <span style={{ fontSize: '1.2rem' }}>📜</span>
+                      <div>
+                        <div className="font-bold text-md text-primary">Executive CISO Incident Briefing</div>
+                        <div className="text-secondary text-xs">Plain-English risk analysis, regulatory exposure, and threat vectors for leadership.</div>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        className="btn btn-outline"
+                        style={{ fontSize: '12px', padding: '6px 12px' }}
+                        onClick={handleFetchBriefing}
+                        disabled={briefingLoading}
+                      >
+                        {briefingLoading ? 'Drafting...' : 'Draft Briefing'}
+                      </button>
+                      {briefingData && (
+                        <button
+                          className="btn btn-outline"
+                          style={{ fontSize: '12px', padding: '6px 12px' }}
+                          onClick={() => {
+                            navigator.clipboard.writeText(briefingData.content_markdown);
+                            setCopiedMemo(true);
+                            setTimeout(() => setCopiedMemo(false), 2000);
+                          }}
+                        >
+                          {copiedMemo ? '✓ Copied Memo!' : '📋 Copy Memo'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {briefingData ? (
+                    <div
+                      style={{
+                        background: 'var(--bg-inset)',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-subtle)',
+                        maxHeight: '300px',
+                        overflowY: 'auto',
+                      }}
+                    >
+                      <pre
+                        className="text-mono text-xs"
+                        style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6', color: 'var(--text-secondary)' }}
+                      >
+                        {briefingData.content_markdown}
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="text-secondary text-xs">
+                      Click &quot;Draft Briefing&quot; to synthesize an executive incident report.
+                    </div>
+                  )}
+                </div>
+
+                {/* Section 3: Interactive Copilot Chat */}
+                <div className="card">
+                  <div className="flex items-center gap-2" style={{ marginBottom: 'var(--space-3)' }}>
+                    <span style={{ fontSize: '1.2rem' }}>💬</span>
+                    <div>
+                      <div className="font-bold text-md text-primary">Ask the AI Security Copilot</div>
+                      <div className="text-secondary text-xs">Ask specific questions regarding protocol compatibility, downgrade threats, or post-quantum risk.</div>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2" style={{ marginBottom: 'var(--space-3)' }}>
+                    <input
+                      type="text"
+                      className="input"
+                      style={{ flex: 1 }}
+                      placeholder="e.g. Will disabling TLS 1.0 cause downtime? What is the threat if left unpatched?"
+                      value={copilotQuery}
+                      onChange={(e) => setCopilotQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleAskCopilot();
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => handleAskCopilot()}
+                      disabled={copilotLoading || !copilotQuery.trim()}
+                    >
+                      {copilotLoading ? 'Thinking...' : 'Ask Copilot'}
+                    </button>
+                  </div>
+
+                  {/* Quick Prompts */}
+                  <div className="flex gap-2 flex-wrap" style={{ marginBottom: 'var(--space-3)' }}>
+                    <span className="text-xs text-muted" style={{ alignSelf: 'center' }}>Suggested:</span>
+                    <button
+                      className="badge"
+                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      onClick={() => {
+                        const q = 'Will disabling TLS 1.0 cause downtime or break legacy clients?';
+                        setCopilotQuery(q);
+                        handleAskCopilot(q);
+                      }}
+                    >
+                      ⏱️ Zero-downtime migration?
+                    </button>
+                    <button
+                      className="badge"
+                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      onClick={() => {
+                        const q = 'What is the exact threat vector if left unpatched?';
+                        setCopilotQuery(q);
+                        handleAskCopilot(q);
+                      }}
+                    >
+                      🛡️ Attack vector analysis?
+                    </button>
+                    <button
+                      className="badge"
+                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      onClick={() => {
+                        const q = 'Is this session vulnerable to post-quantum harvest attacks?';
+                        setCopilotQuery(q);
+                        handleAskCopilot(q);
+                      }}
+                    >
+                      ⚛️ Quantum harvest risk?
+                    </button>
+                  </div>
+
+                  {copilotAnswer && (
+                    <div
+                      style={{
+                        background: 'var(--bg-inset)',
+                        padding: '16px',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border-subtle)',
+                      }}
+                    >
+                      <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-2)' }}>
+                        <span className="font-bold text-xs text-accent">AI Copilot Response</span>
+                        <span className="badge badge-info" style={{ fontSize: '10px' }}>{copilotEngine}</span>
+                      </div>
+                      <div
+                        className="text-sm text-secondary"
+                        style={{ whiteSpace: 'pre-wrap', lineHeight: '1.6' }}
+                      >
+                        {copilotAnswer}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -64,3 +64,25 @@ export async function uploadPcap(file) {
 export function getReportUrl(jobId, format) {
   return `${API_BASE}/api/reports/${jobId}.${format}?api_key=${encodeURIComponent(API_KEY)}`;
 }
+
+export async function getCopilotRemediation(sessionId, serverType = 'postfix') {
+  return request(`/api/sessions/${sessionId}/copilot/remediate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ server_type: serverType }),
+  });
+}
+
+export async function getCopilotBriefing(sessionId) {
+  return request(`/api/sessions/${sessionId}/copilot/briefing`, {
+    method: 'POST',
+  });
+}
+
+export async function askCopilot(sessionId, query) {
+  return request(`/api/sessions/${sessionId}/copilot/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+}

@@ -25,8 +25,10 @@ from typing import Any
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from pymongo import DESCENDING
 
+from secure_smtp.ai.copilot import ask_copilot, generate_incident_briefing, generate_server_remediation
 from secure_smtp.api.auth import AUTH_REQUIRED, verify_api_key
 from secure_smtp.compliance.frameworks import evaluate_fleet_compliance, evaluate_session_compliance
 from secure_smtp.config import get_settings
@@ -809,3 +811,49 @@ def get_session_compliance(session_id: int):
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     return evaluate_session_compliance(session)
+
+
+# ── AI Security Copilot Endpoints ──
+
+
+class RemediateRequest(BaseModel):
+    server_type: str = "postfix"
+
+
+class AskCopilotRequest(BaseModel):
+    query: str
+
+
+@app.post("/api/sessions/{session_id}/copilot/remediate", tags=["AI Copilot"], dependencies=[Depends(verify_api_key)])
+def copilot_remediate(session_id: int, req: RemediateRequest = RemediateRequest()):
+    """Generate production-ready mail server configuration to fix detected weaknesses."""
+    sessions_col = get_sessions_col()
+    session = sessions_col.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    findings = session.get("findings", [])
+    return generate_server_remediation(session, findings, req.server_type)
+
+
+@app.post("/api/sessions/{session_id}/copilot/briefing", tags=["AI Copilot"], dependencies=[Depends(verify_api_key)])
+def copilot_briefing(session_id: int):
+    """Generate an executive-level CISO incident briefing memo."""
+    sessions_col = get_sessions_col()
+    session = sessions_col.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    findings = session.get("findings", [])
+    risk_info = session.get("risk_score") or {}
+    score = risk_info.get("score_0_100", 0.0)
+    return generate_incident_briefing(session, findings, score)
+
+
+@app.post("/api/sessions/{session_id}/copilot/ask", tags=["AI Copilot"], dependencies=[Depends(verify_api_key)])
+def copilot_ask(session_id: int, req: AskCopilotRequest):
+    """Ask the AI Copilot any question about this session's security posture."""
+    sessions_col = get_sessions_col()
+    session = sessions_col.find_one({"id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    findings = session.get("findings", [])
+    return ask_copilot(session, findings, req.query)
