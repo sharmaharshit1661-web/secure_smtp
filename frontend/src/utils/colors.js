@@ -1,6 +1,6 @@
 /**
  * Severity and risk tier color mapping.
- * Maps to Precision Instrument Design System tokens (index.css).
+ * Crimson Dark Premium Design System tokens.
  */
 
 export const TIER_COLORS = {
@@ -13,12 +13,12 @@ export const TIER_COLORS = {
 };
 
 export const TIER_COLORS_RAW = {
-  critical: '#F43F5E',
-  high: '#FB923C',
+  critical: '#EF4444',
+  high: '#F97316',
   medium: '#FACC15',
   low: '#38BDF8',
-  clean: '#34D399',
-  info: '#94A3B8',
+  clean: '#10B981',
+  info: '#64748B',
 };
 
 export function getTierFromScore(score) {

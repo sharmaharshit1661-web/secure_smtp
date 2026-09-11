@@ -50,7 +50,7 @@ export default function RiskGauge({ score = 0, tier = 'clean', size = 150 }) {
         y1={cy + innerR * Math.sin(angle)}
         x2={cx + outerR * Math.cos(angle)}
         y2={cy + outerR * Math.sin(angle)}
-        stroke={isMajor ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.08)'}
+        stroke={isMajor ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.06)'}
         strokeWidth={isMajor ? 1.5 : 0.8}
         strokeLinecap="round"
       />
@@ -70,7 +70,7 @@ export default function RiskGauge({ score = 0, tier = 'clean', size = 150 }) {
       <path
         d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
         fill="none"
-        stroke="rgba(255,255,255,0.07)"
+        stroke="rgba(255,255,255,0.05)"
         strokeWidth={7}
         strokeLinecap="round"
       />

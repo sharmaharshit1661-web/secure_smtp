@@ -86,3 +86,54 @@ export async function askCopilot(sessionId, query) {
     body: JSON.stringify({ query }),
   });
 }
+
+export async function getLiveStatus() {
+  return request('/api/live/status');
+}
+
+export async function startLiveLab() {
+  return request('/api/live/start-lab', { method: 'POST' });
+}
+
+export async function stopLiveLab() {
+  return request('/api/live/stop-lab', { method: 'POST' });
+}
+
+export async function simulateLiveScenario(scenario) {
+  return request(`/api/live/simulate/${scenario}`, { method: 'POST' });
+}
+
+export async function clearLiveHistory() {
+  return request('/api/live/clear-history', { method: 'POST' });
+}
+
+export async function dispatchCustomMail(payload) {
+  return request('/api/live/dispatch-custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getAiOverview() {
+  return request('/api/ai/overview');
+}
+
+export async function askGlobalCopilot(query, sessionId = null) {
+  return request('/api/ai/copilot/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, session_id: sessionId }),
+  });
+}
+
+export async function getSessions(limit = 100) {
+  return request(`/api/sessions?limit=${limit}`);
+}
+
+export async function getComplianceSummary() {
+  return request('/api/compliance/summary');
+}
+
+
+

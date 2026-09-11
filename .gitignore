@@ -49,3 +49,9 @@ frontend/dist/
 AGENTS.md
 CONVERSATION_SUMMARY.md
 PRODUCTION_READY.md
+
+# Environment variables
+.env
+.env.*
+*.env
+!.env.example

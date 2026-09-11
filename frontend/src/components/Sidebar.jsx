@@ -1,25 +1,83 @@
+import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Icon from './Icon';
+import Logo from './Logo';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Fleet Overview', icon: 'globe' },
   { to: '/sessions', label: 'Session Explorer', icon: 'microscope' },
   { to: '/ingest', label: 'Live Ingest', icon: 'bolt' },
-  { to: '/rules', label: 'Rules & Compliance', icon: 'clipboard' },
+  { to: '/client', label: 'Client Dispatch', icon: 'send' },
+  { to: '/rules', label: 'Compliance', icon: 'clipboard' },
+  { to: '/ai-security', label: 'AI Security', icon: 'brain' },
 ];
 
-export default function Sidebar({ stats = {}, isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange }) {
+  const [sysTime, setSysTime] = useState('');
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    const updateTime = () => {
+      const now = new Date();
+      const h = String(now.getUTCHours()).padStart(2, '0');
+      const m = String(now.getUTCMinutes()).padStart(2, '0');
+      const s = String(now.getUTCSeconds()).padStart(2, '0');
+      setSysTime(`${h}:${m}:${s} UTC`);
+    };
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = width;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const nextWidth = Math.min(Math.max(startWidth + deltaX, 200), 480);
+      if (onWidthChange) {
+        onWidthChange(nextWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleDoubleClick = () => {
+    if (onWidthChange) onWidthChange(264);
+  };
+
   return (
-    <aside className={`app-sidebar ${isOpen ? 'open' : ''}`}>
+    <aside className={`app-sidebar ${isOpen ? 'open' : ''} ${isResizing ? 'resizing' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
-        <div className="sidebar-logo">
-          <Icon name="shield" size={19} strokeWidth={1.8} />
+        <div className="sidebar-brand-icon">
+          <Logo size={34} />
         </div>
-        <div>
+        <div className="sidebar-brand-text">
           <div className="sidebar-title">Secure SMTP</div>
-          <div className="sidebar-subtitle">Cryptographic Ops</div>
+          <div className="sidebar-subtitle">Cryptographic Intelligence</div>
         </div>
+      </div>
+
+      {/* Clock */}
+      <div className="sidebar-clock">
+        <span className="sidebar-clock-label">System Time</span>
+        <span className="sidebar-clock-val">{sysTime || '00:00:00 UTC'}</span>
       </div>
 
       {/* Navigation */}
@@ -43,61 +101,42 @@ export default function Sidebar({ stats = {}, isOpen, onClose }) {
 
       <div className="sidebar-spacer" />
 
-      {/* Live Telemetry Widget */}
-      <div className="sidebar-telemetry">
-        <div className="sidebar-telemetry-header">
-          <span>Live Telemetry</span>
-          <div className="status-beacon">
-            <span className="status-dot status-dot-active" />
-            <span style={{ color: 'var(--sev-clean)' }}>ACTIVE</span>
-          </div>
-        </div>
-        <div className="sidebar-stat-grid">
-          <div className="sidebar-stat">
-            <div className="sidebar-stat-label">Hosts</div>
-            <div className="sidebar-stat-value">{stats.totalHosts ?? '—'}</div>
-          </div>
-          <div className="sidebar-stat">
-            <div className="sidebar-stat-label">Sessions</div>
-            <div className="sidebar-stat-value">{stats.totalSessions ?? '—'}</div>
-          </div>
-          <div className="sidebar-stat" style={{ gridColumn: 'span 2' }}>
-            <div className="sidebar-stat-label">Critical Alerts</div>
-            <div
-              className="sidebar-stat-value"
-              style={{
-                color: stats.criticalHosts > 0 ? 'var(--sev-critical)' : 'var(--sev-clean)',
-                fontSize: 'var(--fs-base)',
-              }}
-            >
-              {stats.criticalHosts ?? 0} hosts
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Seal */}
       <div className="sidebar-seal">
         <div className="sidebar-seal-title">
-          <Icon name="lock" size={14} />
-          <span>Passive Forensic Engine</span>
+          <Icon name="lock" size={13} />
+          <span>Forensic Engine</span>
         </div>
         <div className="sidebar-seal-desc">
-          Zero network transmission. Zero payload decryption. Pure PCAP analysis.
+          Real-time passive cryptographic posture intelligence
         </div>
       </div>
 
-      {/* Watermark / Attribution */}
+      {/* Attribution */}
       <div className="sidebar-watermark">
-        <span>Project belongs to </span>
+        <span>Built by </span>
         <a
           href="https://github.com/sharmaharshit1661-web"
           target="_blank"
           rel="noopener noreferrer"
           className="sidebar-watermark-link"
         >
-          @sharmaharshit1661-web
+          @sharmaharshit1661
         </a>
+      </div>
+
+      {/* Resizer Handle */}
+      <div
+        className={`sidebar-resizer ${isResizing ? 'resizing' : ''}`}
+        onMouseDown={handleMouseDown}
+        onDoubleClick={handleDoubleClick}
+        title="Drag to resize sidebar · Double-click to reset (264px)"
+        aria-label="Resize sidebar"
+        role="separator"
+        aria-orientation="vertical"
+      >
+        <div className="sidebar-resizer-knob" />
       </div>
     </aside>
   );

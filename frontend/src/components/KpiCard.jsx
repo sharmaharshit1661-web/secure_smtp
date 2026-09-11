@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from './Icon';
 
-/** Animated numeric count-up hook (eased, respects reduced motion). */
-function useCountUp(target, duration = 900) {
+function useCountUp(target, duration = 1000) {
   const isReduced = typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [value, setValue] = useState(() => (isReduced || typeof target !== 'number' ? target : 0));
   const rafRef = useRef(null);
@@ -48,8 +47,8 @@ export default function KpiCard({ label, value, sub, icon, accentColor, classNam
       <div className="kpi-top">
         <span className="kpi-label">{label}</span>
         {icon && (
-          <span className="kpi-icon">
-            <Icon name={icon} size={15} />
+          <span className="kpi-icon" style={accentColor ? { borderColor: accentColor, color: accentColor, background: `${accentColor}12` } : undefined}>
+            <Icon name={icon} size={16} />
           </span>
         )}
       </div>

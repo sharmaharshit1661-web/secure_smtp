@@ -277,23 +277,8 @@ class RuleEngine:
                         pass
                 return is_expiring_soon(value, days)
 
-            # Handle 'value in [...]' conditions
-            if "value in [" in condition:
-                list_str = condition.split("[")[1].rstrip("]").strip()
-                items = [s.strip().strip("'\"") for s in list_str.split(",")]
-                return str(value) in items
-
-            # Handle 'value == ...' conditions
-            if "value ==" in condition:
-                expected = condition.split("==")[1].strip().strip("'\"")
-                if expected == "true":
-                    return bool(value)
-                elif expected == "false":
-                    return not bool(value)
-                return str(value) == expected
-
             # Handle complex session-level conditions
-            if "session." in condition and "value ==" in condition:
+            if "session." in condition and ("value ==" in condition or "value in" in condition):
                 # Parse compound conditions with 'and'
                 parts = condition.split(" and ")
                 results = []
@@ -311,6 +296,21 @@ class RuleEngine:
                         else:
                             results.append(str(value) == expected)
                 return all(results)
+
+            # Handle 'value in [...]' conditions
+            if "value in [" in condition:
+                list_str = condition.split("[")[1].rstrip("]").strip()
+                items = [s.strip().strip("'\"") for s in list_str.split(",")]
+                return str(value) in items
+
+            # Handle 'value == ...' conditions
+            if "value ==" in condition:
+                expected = condition.split("==")[1].strip().strip("'\"")
+                if expected == "true":
+                    return bool(value)
+                elif expected == "false":
+                    return not bool(value)
+                return str(value) == expected
 
             # Handle compound conditions with 'and'
             if " and " in condition:

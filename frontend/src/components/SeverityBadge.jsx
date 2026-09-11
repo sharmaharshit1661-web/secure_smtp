@@ -1,13 +1,21 @@
-const LABELS = {
-  critical: 'Critical',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-  clean: 'Clean',
-  info: 'Info',
+const CONFIG = {
+  critical: { label: 'CRITICAL', isAlert: true },
+  high: { label: 'HIGH', isAlert: true },
+  medium: { label: 'MEDIUM', isAlert: false },
+  low: { label: 'LOW', isAlert: false },
+  clean: { label: 'HEALTHY', isAlert: false },
+  healthy: { label: 'HEALTHY', isAlert: false },
+  info: { label: 'INFO', isAlert: false },
 };
 
 export default function SeverityBadge({ severity }) {
   const sev = String(severity || 'info').toLowerCase();
-  return <span className={`badge badge-${sev}`}>{LABELS[sev] || sev}</span>;
+  const cfg = CONFIG[sev] || { label: sev.toUpperCase(), isAlert: false };
+
+  return (
+    <span className={`badge badge-${sev}`}>
+      <span className={`badge-indicator ${cfg.isAlert ? 'badge-indicator-pulse' : ''}`} />
+      <span>{cfg.label}</span>
+    </span>
+  );
 }

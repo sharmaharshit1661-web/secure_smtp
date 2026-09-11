@@ -15,7 +15,7 @@ export default function HostRow({ host }) {
         <div className="host-risk-bar" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
         <div>
           <div className="host-ip">{host.ip}</div>
-          <div className="host-meta">{host.session_count} analyzed sessions</div>
+          <div className="host-meta">{host.session_count} sessions analyzed</div>
         </div>
       </div>
       <div className="host-row-right">
@@ -23,9 +23,7 @@ export default function HostRow({ host }) {
           {formatScore(score)}<span className="host-score-denominator">/100</span>
         </div>
         <SeverityBadge severity={tier === 'clean' ? 'clean' : tier} />
-        <button className="btn" style={{ fontSize: 'var(--font-size-xs)' }}>
-          Inspect →
-        </button>
+        <button className="btn btn-sm btn-outline">Inspect →</button>
       </div>
     </div>
   );

@@ -16,9 +16,9 @@ export default function WireDiagram({ session }) {
   }
 
   let statusLabel;
-  if (isStripped) statusLabel = 'STARTTLS STRIPPED';
+  if (isStripped) statusLabel = 'STARTTLS Stripped';
   else if (session.tls_mode !== 'none') statusLabel = `${tlsMode} TLS`;
-  else statusLabel = 'PLAINTEXT';
+  else statusLabel = 'Plaintext';
 
   return (
     <div className="wire-diagram">
@@ -30,10 +30,10 @@ export default function WireDiagram({ session }) {
         <div className="wire-protocol">
           <span>{proto}</span>
           {tlsBadge}
-          <span>{statusLabel}</span>
+          <span style={{ color: isStripped ? 'var(--sev-critical)' : 'var(--accent)' }}>{statusLabel}</span>
         </div>
         <div className="wire-line" />
-        <div className="wire-pcap">PCAP: {session.pcap_source || 'Live Session'}</div>
+        <div className="wire-pcap">Source: {session.pcap_source || 'Live Feed'}</div>
       </div>
       <div className="wire-endpoint">
         <div className="wire-endpoint-label">Destination Server</div>

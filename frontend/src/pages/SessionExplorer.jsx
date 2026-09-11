@@ -20,10 +20,10 @@ import {
 import { getTierColorRaw } from '../utils/colors';
 
 const TOOLTIP_STYLE = {
-  backgroundColor: 'var(--bg-elevated)',
-  border: '1px solid var(--border-strong)',
+  backgroundColor: 'rgba(13, 13, 14, 0.96)',
+  border: '1px solid #1F1F23',
   borderRadius: '10px',
-  color: 'var(--text-primary)',
+  color: '#E8E8EC',
   fontFamily: 'var(--font-mono)',
   fontSize: '12px',
   boxShadow: 'var(--shadow-md)',
@@ -211,18 +211,18 @@ export default function SessionExplorer() {
       <div className="page-header animate-in">
         <div>
           <h1 className="page-title">
-            <span className="page-title-icon"><Icon name="microscope" size={20} /></span>
-            Forensic Session Telemetry Dossier
+            <span className="page-title-icon"><Icon name="microscope" size={24} /></span>
+            Session Explorer
           </h1>
           <p className="page-subtitle">
-            Deep packet-level cryptographic analysis, compliance checks, and SHAP risk attribution.
+            Deep packet-level cryptographic analysis, compliance checks, and SHAP risk attribution
           </p>
         </div>
       </div>
 
       {/* Selectors Bar */}
-      <div className="card animate-in animate-in-1" style={{ padding: 'var(--space-3) var(--space-4)' }}>
-        <div className="grid grid-1-2 gap-3 items-center">
+      <div className="card animate-in animate-in-1" style={{ padding: '16px 20px' }}>
+        <div className="grid grid-1-2 gap-4 items-center">
           <div>
             <label className="field-label">Target Monitored Host</label>
             <select
@@ -271,7 +271,7 @@ export default function SessionExplorer() {
             No Session Stream Selected
           </div>
           <p className="text-secondary text-sm" style={{ maxWidth: '420px', margin: '0 auto' }}>
-            Select a host and session from the controls above or ingest a PCAP file to explore cryptographic telemetry.
+            Select a target host and session from the controls above or ingest a PCAP file to explore cryptographic telemetry.
           </p>
         </div>
       ) : (
@@ -284,7 +284,7 @@ export default function SessionExplorer() {
           {/* Top 3 Summary Cards */}
           <div className="grid grid-3">
             {/* Risk Gauge */}
-            <div className="card card-hover flex flex-col items-center justify-center animate-in animate-in-3" style={{ textAlign: 'center' }}>
+            <div className="card card-hover flex flex-col items-center justify-center animate-in animate-in-3" style={{ textAlign: 'center', padding: '24px' }}>
               <div className="kpi-label" style={{ marginBottom: 'var(--space-3)' }}>
                 Cryptographic Risk Gauge
               </div>
@@ -295,9 +295,9 @@ export default function SessionExplorer() {
             </div>
 
             {/* Handshake Intelligence */}
-            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3">
+            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3" style={{ padding: '24px' }}>
               <div className="section-header" style={{ marginBottom: 'var(--space-4)' }}>
-                <Icon name="lock" size={15} /> Handshake Summary
+                <Icon name="lock" size={15} /> Handshake Parameters
               </div>
               {hs ? (
                 <div className="info-grid">
@@ -313,7 +313,7 @@ export default function SessionExplorer() {
                     <div className="info-item-label">Forward Secrecy</div>
                     <div className="info-item-value">
                       {hs.forward_secrecy ? (
-                        <span className="text-clean font-semibold">Present (PFS)</span>
+                        <span className="text-clean font-semibold">Supported (PFS)</span>
                       ) : (
                         <span className="text-critical font-semibold">None (Static RSA)</span>
                       )}
@@ -332,7 +332,7 @@ export default function SessionExplorer() {
             </div>
 
             {/* Anomaly Detection */}
-            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3">
+            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3" style={{ padding: '24px' }}>
               <div className="section-header" style={{ marginBottom: 'var(--space-4)' }}>
                 <Icon name="brain" size={15} /> AI Anomaly Detection
               </div>
@@ -344,14 +344,14 @@ export default function SessionExplorer() {
                       {anomaly.is_anomalous ? 'Unusual Anomaly' : 'Normal Conformity'}
                     </span>
                   </div>
-                  <div className="text-secondary text-sm">
+                  <div className="text-secondary text-sm font-mono">
                     Isolation Forest Score:{' '}
-                    <span className="text-mono font-bold text-primary">
+                    <span className="font-bold text-accent">
                       {Number(anomaly.score || 0).toFixed(3)}
                     </span>
                   </div>
-                  <div className="text-muted text-xs" style={{ marginTop: 'var(--space-1)' }}>
-                    Baseline Reference: {anomaly.baseline || 'Global Fleet'}
+                  <div className="text-muted text-xs font-mono" style={{ marginTop: 'var(--space-1)' }}>
+                    Baseline: {anomaly.baseline || 'Global Fleet'}
                   </div>
                 </div>
               ) : (
@@ -390,12 +390,8 @@ export default function SessionExplorer() {
               <button
                 className={`tab ${activeTab === 'copilot' ? 'active' : ''}`}
                 onClick={() => setActiveTab('copilot')}
-                style={{
-                  background: activeTab === 'copilot' ? 'rgba(245, 158, 11, 0.15)' : undefined,
-                  borderColor: activeTab === 'copilot' ? 'var(--amber-signal)' : undefined,
-                }}
               >
-                <span style={{ color: 'var(--amber-signal)', marginRight: '4px' }}>✨</span> AI Security Copilot
+                <Icon name="sparkles" size={14} /> AI Security Copilot
               </button>
             </div>
 
@@ -613,8 +609,7 @@ export default function SessionExplorer() {
                         <option value="sendmail">Sendmail (sendmail.mc)</option>
                       </select>
                       <button
-                        className="btn btn-primary"
-                        style={{ fontSize: '12px', padding: '6px 12px' }}
+                        className="btn btn-primary btn-sm"
                         onClick={() => handleFetchRemediation(serverType)}
                         disabled={remediationLoading}
                       >
@@ -630,15 +625,15 @@ export default function SessionExplorer() {
                           Target File: <strong className="text-accent">{remediationData.filepath}</strong>
                         </span>
                         <button
-                          className="btn btn-outline"
-                          style={{ padding: '4px 10px', fontSize: '11px' }}
+                          className="btn btn-outline btn-sm"
                           onClick={() => {
                             navigator.clipboard.writeText(remediationData.config_content);
                             setCopiedConfig(true);
                             setTimeout(() => setCopiedConfig(false), 2000);
                           }}
                         >
-                          {copiedConfig ? '✓ Copied Config!' : '📋 Copy Configuration'}
+                          <Icon name="copy" size={13} />
+                          {copiedConfig ? 'Copied Config!' : 'Copy Configuration'}
                         </button>
                       </div>
 
@@ -669,7 +664,7 @@ export default function SessionExplorer() {
                               background: 'var(--bg-inset)',
                               padding: '10px 14px',
                               borderRadius: '6px',
-                              color: 'var(--amber-signal)',
+                              color: 'var(--accent)',
                               border: '1px solid var(--border-subtle)',
                             }}
                           >
@@ -702,7 +697,7 @@ export default function SessionExplorer() {
                 <div className="card">
                   <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-3)' }}>
                     <div className="flex items-center gap-2">
-                      <span style={{ fontSize: '1.2rem' }}>📜</span>
+                      <span className="text-accent"><Icon name="file" size={16} /></span>
                       <div>
                         <div className="font-bold text-md text-primary">Executive CISO Incident Briefing</div>
                         <div className="text-secondary text-xs">Plain-English risk analysis, regulatory exposure, and threat vectors for leadership.</div>
@@ -711,8 +706,7 @@ export default function SessionExplorer() {
 
                     <div className="flex gap-2">
                       <button
-                        className="btn btn-outline"
-                        style={{ fontSize: '12px', padding: '6px 12px' }}
+                        className="btn btn-outline btn-sm"
                         onClick={handleFetchBriefing}
                         disabled={briefingLoading}
                       >
@@ -720,15 +714,15 @@ export default function SessionExplorer() {
                       </button>
                       {briefingData && (
                         <button
-                          className="btn btn-outline"
-                          style={{ fontSize: '12px', padding: '6px 12px' }}
+                          className="btn btn-outline btn-sm"
                           onClick={() => {
                             navigator.clipboard.writeText(briefingData.content_markdown);
                             setCopiedMemo(true);
                             setTimeout(() => setCopiedMemo(false), 2000);
                           }}
                         >
-                          {copiedMemo ? '✓ Copied Memo!' : '📋 Copy Memo'}
+                          <Icon name="copy" size={13} />
+                          {copiedMemo ? 'Copied Memo!' : 'Copy Memo'}
                         </button>
                       )}
                     </div>
@@ -762,7 +756,7 @@ export default function SessionExplorer() {
                 {/* Section 3: Interactive Copilot Chat */}
                 <div className="card">
                   <div className="flex items-center gap-2" style={{ marginBottom: 'var(--space-3)' }}>
-                    <span style={{ fontSize: '1.2rem' }}>💬</span>
+                    <span className="text-accent"><Icon name="terminal" size={16} /></span>
                     <div>
                       <div className="font-bold text-md text-primary">Ask the AI Security Copilot</div>
                       <div className="text-secondary text-xs">Ask specific questions regarding protocol compatibility, downgrade threats, or post-quantum risk.</div>
@@ -794,37 +788,61 @@ export default function SessionExplorer() {
                   <div className="flex gap-2 flex-wrap" style={{ marginBottom: 'var(--space-3)' }}>
                     <span className="text-xs text-muted" style={{ alignSelf: 'center' }}>Suggested:</span>
                     <button
-                      className="badge"
-                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      className="btn btn-sm"
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        borderRadius: '9999px',
+                        background: 'rgba(16, 185, 129, 0.06)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => {
                         const q = 'Will disabling TLS 1.0 cause downtime or break legacy clients?';
                         setCopilotQuery(q);
                         handleAskCopilot(q);
                       }}
                     >
-                      ⏱️ Zero-downtime migration?
+                      Zero-downtime migration?
                     </button>
                     <button
-                      className="badge"
-                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      className="btn btn-sm"
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        borderRadius: '9999px',
+                        background: 'rgba(16, 185, 129, 0.06)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => {
                         const q = 'What is the exact threat vector if left unpatched?';
                         setCopilotQuery(q);
                         handleAskCopilot(q);
                       }}
                     >
-                      🛡️ Attack vector analysis?
+                      Attack vector analysis?
                     </button>
                     <button
-                      className="badge"
-                      style={{ cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                      className="btn btn-sm"
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        borderRadius: '9999px',
+                        background: 'rgba(16, 185, 129, 0.06)',
+                        color: 'var(--accent)',
+                        border: '1px solid rgba(16, 185, 129, 0.2)',
+                        cursor: 'pointer',
+                      }}
                       onClick={() => {
                         const q = 'Is this session vulnerable to post-quantum harvest attacks?';
                         setCopilotQuery(q);
                         handleAskCopilot(q);
                       }}
                     >
-                      ⚛️ Quantum harvest risk?
+                      Quantum harvest risk?
                     </button>
                   </div>
 
