@@ -5,6 +5,7 @@ import Sidebar from './Sidebar';
 import Icon from './Icon';
 import { getHosts } from '../api/client';
 import { clerkAppearance } from '../config/clerkAppearance';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
   const [stats, setStats] = useState({});
@@ -31,10 +32,7 @@ export default function Layout() {
     }
   };
 
-  const isKeyConfigured = Boolean(
-    import.meta.env.VITE_CLERK_PUBLISHABLE_KEY &&
-    !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY.includes('YOUR_KEY')
-  );
+  const { user, logout, isClerkEnabled } = useAuth();
 
   useEffect(() => {
     getHosts()
@@ -67,6 +65,27 @@ export default function Layout() {
             >
               <Icon name="menu" size={16} />
             </button>
+            <Link
+              to="/"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '11px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--text-secondary)',
+                textDecoration: 'none',
+                padding: '4px 10px',
+                borderRadius: 'var(--radius-pill)',
+                border: '1px solid var(--border)',
+                background: 'rgba(255, 255, 255, 0.02)',
+                transition: 'all 150ms ease',
+              }}
+              title="Return to Product Landing Page"
+            >
+              <Icon name="arrowRight" size={11} style={{ transform: 'rotate(180deg)' }} />
+              <span>Overview</span>
+            </Link>
           </div>
 
           <div className="flex items-center gap-3">
@@ -77,12 +96,12 @@ export default function Layout() {
               </span>
             </div>
 
-            {/* Clerk Authentication Header Controls */}
-            {isKeyConfigured ? (
+            {/* Authentication Header Controls */}
+            {isClerkEnabled ? (
               <div className="flex items-center gap-2">
                 <SignedIn>
                   <UserButton
-                    afterSignOutUrl="/sign-in"
+                    afterSignOutUrl="/"
                     appearance={clerkAppearance}
                   />
                 </SignedIn>
@@ -100,17 +119,71 @@ export default function Layout() {
                   </Link>
                 </SignedOut>
               </div>
+            ) : user ? (
+              <div className="flex items-center gap-2">
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  background: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '20px',
+                  padding: '4px 10px 4px 6px',
+                }}>
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1px solid rgba(16, 185, 129, 0.4)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    color: 'var(--primary)',
+                    fontFamily: 'var(--font-mono)',
+                  }}>
+                    {(user.name || 'O').charAt(0).toUpperCase()}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
+                    <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {user.name || 'Operator'}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
+                      {user.role ? user.role.split(' ')[0] : 'SecOps'} · L4
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={logout}
+                  className="btn btn-secondary btn-sm"
+                  style={{
+                    padding: '4px 10px',
+                    fontSize: '11px',
+                    fontFamily: 'var(--font-mono)',
+                    borderRadius: 'var(--radius-pill)',
+                    color: 'var(--text-muted)',
+                  }}
+                  title="Sign out and close the dashboard"
+                >
+                  Sign Out
+                </button>
+              </div>
             ) : (
               <Link
                 to="/sign-in"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-primary btn-sm"
                 style={{
-                  padding: '5px 12px',
-                  fontSize: '11px',
-                  fontFamily: 'var(--font-mono)',
+                  padding: '5px 14px',
+                  fontSize: '12px',
                   borderRadius: 'var(--radius-pill)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
                 }}
               >
+                <Icon name="lock" size={12} />
                 Sign In
               </Link>
             )}

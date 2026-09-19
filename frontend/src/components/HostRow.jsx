@@ -10,7 +10,7 @@ export default function HostRow({ host }) {
   const color = getTierColorRaw(tier);
 
   return (
-    <div className="host-row" onClick={() => navigate(`/sessions/${host.host_id}`)}>
+    <div className="host-row" onClick={() => navigate(`/dashboard/sessions/${host.host_id}`)}>
       <div className="host-row-left">
         <div className="host-risk-bar" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
         <div>

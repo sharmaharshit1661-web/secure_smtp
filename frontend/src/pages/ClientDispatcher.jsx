@@ -655,7 +655,7 @@ export default function ClientDispatcher() {
                 Inspect in Live Ingest →
               </Link>
               <Link
-                to="/sessions"
+                to="/dashboard/sessions"
                 className="btn btn-outline btn-sm"
                 style={{ fontSize: '11px', padding: '5px 12px' }}
               >

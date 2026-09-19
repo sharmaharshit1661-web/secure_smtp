@@ -273,7 +273,7 @@ export default function RulesCompliance() {
             </button>
 
             <Link
-              to="/sessions"
+              to="/dashboard/sessions"
               className="btn btn-outline"
               style={{ fontSize: '11px', padding: '6px 14px', textTransform: 'uppercase', gap: '6px' }}
             >

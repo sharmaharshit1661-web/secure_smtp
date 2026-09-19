@@ -1,0 +1,16 @@
+{
+  "name": "secure-smtp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Secure SMTP — Passive Cryptographic Posture Intelligence & Explainable AI Risk Attribution",
+  "scripts": {
+    "dev": "./start_demo.sh",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:backend": "bash -c 'source .venv/bin/activate && PYTHONPATH=src uvicorn secure_smtp.api.main:app --reload --port 8000'",
+    "build": "npm run build --prefix frontend",
+    "start": "./start_demo.sh"
+  },
+  "workspaces": [
+    "frontend"
+  ]
+}

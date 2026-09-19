@@ -4,12 +4,12 @@ import Icon from './Icon';
 import Logo from './Logo';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Fleet Overview', icon: 'globe' },
-  { to: '/sessions', label: 'Session Explorer', icon: 'microscope' },
-  { to: '/ingest', label: 'Live Ingest', icon: 'bolt' },
-  { to: '/client', label: 'Client Dispatch', icon: 'send' },
-  { to: '/rules', label: 'Compliance', icon: 'clipboard' },
-  { to: '/ai-security', label: 'AI Security', icon: 'brain' },
+  { to: '/dashboard', label: 'Fleet Overview', icon: 'globe' },
+  { to: '/dashboard/sessions', label: 'Session Explorer', icon: 'microscope' },
+  { to: '/dashboard/ingest', label: 'Live Ingest', icon: 'bolt' },
+  { to: '/dashboard/client', label: 'Client Dispatch', icon: 'send' },
+  { to: '/dashboard/rules', label: 'Compliance', icon: 'clipboard' },
+  { to: '/dashboard/ai-security', label: 'AI Security', icon: 'brain' },
 ];
 
 export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange }) {
@@ -87,7 +87,7 @@ export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange })
           <NavLink
             key={to}
             to={to}
-            end={to === '/'}
+            end={to === '/dashboard'}
             className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
             onClick={onClose}
           >

@@ -168,7 +168,7 @@ export default function SessionExplorer() {
   const handleHostChange = (e) => {
     const newId = Number(e.target.value);
     setSelectedHostId(newId);
-    navigate(`/sessions/${newId}`);
+    navigate(`/dashboard/sessions/${newId}`);
   };
 
   const hs = sessionData?.handshake;

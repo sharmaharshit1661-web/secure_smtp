@@ -475,7 +475,7 @@ export default function FleetOverview() {
                         barSize={16}
                         background={{ fill: '#141416', radius: [0, 4, 4, 0] }}
                         onClick={(data) => {
-                          if (data && data.hostId) navigate(`/sessions/${data.hostId}`);
+                          if (data && data.hostId) navigate(`/dashboard/sessions/${data.hostId}`);
                         }}
                         cursor="pointer"
                       >
@@ -543,7 +543,7 @@ export default function FleetOverview() {
                       {chartData.map((h) => (
                         <div
                           key={h.hostId}
-                          onClick={() => navigate(`/sessions/${h.hostId}`)}
+                          onClick={() => navigate(`/dashboard/sessions/${h.hostId}`)}
                           className="flex items-center justify-between p-2 rounded cursor-pointer transition-all"
                           style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid #1F1F23' }}
                           onMouseEnter={(e) => { e.currentTarget.style.borderColor = h.color; }}

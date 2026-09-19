@@ -306,7 +306,7 @@ export default function LiveIngest() {
             <button
               type="button"
               className="btn btn-outline btn-sm"
-              onClick={() => navigate('/')}
+              onClick={() => navigate('/dashboard')}
               style={{ fontSize: '12px', padding: '5px 14px' }}
             >
               Fleet Overview →
@@ -701,7 +701,7 @@ export default function LiveIngest() {
                         type="button"
                         className="btn btn-outline btn-sm"
                         style={{ fontSize: '11px', padding: '4px 10px' }}
-                        onClick={() => navigate(`/sessions/${sess.host_id || ''}`)}
+                        onClick={() => navigate(`/dashboard/sessions/${sess.host_id || ''}`)}
                       >
                         Inspect →
                       </button>
