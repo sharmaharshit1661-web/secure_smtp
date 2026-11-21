@@ -2,10 +2,10 @@
 # Secure SMTP — Enterprise Backend Dockerfile
 # ==============================================================================
 # Multi-stage, security-hardened container for the Secure SMTP FastAPI Service.
-# Includes native OS libraries for libpcap, Pango, Cairo, and WeasyPrint PDF reports.
+# Includes native OS libraries for libpcap, Pango, Cairo, and PDF reports.
 # ==============================================================================
 
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -28,18 +28,18 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # ==============================================================================
 # Runtime Stage
 # ==============================================================================
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim-bookworm AS runtime
 
 # Install native runtime libraries for packet capture & PDF compilation
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpcap0.8 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libcairo2 \
-    libgdk-pixbuf2.0-0 \
-    shared-mime-info \
-    fonts-dejavu-core \
-    curl \
+RUN apt-get update && \
+    (apt-get install -y --no-install-recommends libpcap0.8 || apt-get install -y --no-install-recommends libpcap0.8t64) && \
+    apt-get install -y --no-install-recommends \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libcairo2 \
+        shared-mime-info \
+        fonts-dejavu-core \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder
