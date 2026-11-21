@@ -16,7 +16,6 @@ from pathlib import Path
 from secure_smtp.config import get_settings
 from secure_smtp.db.models import (
     Certificate,
-    Finding,
     RiskScore,
     Session,
     TLSHandshake,
@@ -148,8 +147,16 @@ def generate_job_reports(job_id: str) -> None:
     hosts_col = get_hosts_col()
     sessions_col = get_sessions_col()
 
-    hosts = list(hosts_col.find({}, {"_id": 0}))
-    sessions = list(sessions_col.find({}, {"_id": 0}))
+    sessions = list(sessions_col.find({"job_id": job_id}, {"_id": 0}))
+    host_ids = list({s["host_id"] for s in sessions if s.get("host_id") is not None})
+    hosts = list(hosts_col.find({"id": {"$in": host_ids}}, {"_id": 0}))
+    from secure_smtp.ai.risk_model import compute_host_rollup
+    for host in hosts:
+        selected = [s for s in sessions if s.get("host_id") == host["id"]]
+        host["session_count"] = len(selected)
+        host["aggregate_risk_score"] = compute_host_rollup([
+            RiskScore(**s["risk_score"]) for s in selected if s.get("risk_score")
+        ])
 
     report_data = build_report_data(hosts, sessions)
 
@@ -240,6 +247,7 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
             # Create session model
             session = Session(
                 id=session_id,
+                job_id=job_id,
                 pcap_source=Path(pcap_path).name,
                 src_ip=reassembled.client_ip,
                 dst_ip=reassembled.server_ip,

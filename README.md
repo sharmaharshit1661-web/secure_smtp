@@ -4,6 +4,12 @@
 
 ---
 
+> **Pilot security status (22 November 2026):** authentication and report isolation
+> have been hardened and tested locally. See [SECURITY_AUDIT.md](SECURITY_AUDIT.md)
+> for verified behavior, setup, known limits and release gates. Legacy capability
+> descriptions below are not a production-readiness or certification claim.
+
+
 ## 📌 What is Secure SMTP?
 
 **Secure SMTP** is an enterprise-grade cybersecurity forensic and cryptographic posture intelligence platform purpose-built for critical mail transport protocols (**SMTP, IMAP, and POP3**). 
@@ -200,25 +206,29 @@ Secure SMTP/
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
-- **Python 3.10+** (with virtual environment)
-- **Node.js 18+** & npm
+- **Python 3.11+** (with virtual environment)
+- **Node.js 20.19+ or 22.12+** & npm
 - **MongoDB** running locally or in Docker
 
-### 1. Launch the Full Stack (Single Command)
+### 1. Provision authentication, then launch
+Configure MongoDB in `.env`, then provision the local pilot account. The generated
+password is saved privately under `output/private/`; never commit it.
+
 ```bash
+PYTHONPATH=src .venv/bin/python scripts/provision_local_operator.py
 ./start_demo.sh
 ```
 This automatically:
 1. Activates the Python virtual environment.
-2. Seeds MongoDB with realistic demo traffic.
+2. Seeds demo traffic only when `SECURE_SMTP_SEED_DEMO=true` is explicitly set.
 3. Starts the FastAPI backend on `http://localhost:8000`.
-4. Starts the Live Mail Lab on ports `2525`, `2526`, `2527`, `2528`.
+4. Starts the controlled mail lab only when enabled in configuration.
 5. Starts the React Web Console on `http://localhost:5173`.
 
 ### 2. Run Test Suite
 ```bash
-# Python backend tests (176 unit tests covering security hardening, AI, and forensics)
-pytest
+# Start an isolated MongoDB at 127.0.0.1:27029 first; see SECURITY_AUDIT.md
+.venv/bin/python -m pytest
 
 # Frontend linter (oxlint: 0 warnings, 0 errors)
 npm run lint --prefix frontend

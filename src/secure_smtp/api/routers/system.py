@@ -12,7 +12,6 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from secure_smtp.api.auth import AUTH_REQUIRED
 from secure_smtp.db.mongodb import get_mongo_auth_status
 
 logger = logging.getLogger(__name__)
@@ -29,24 +28,7 @@ def health_check() -> dict:
         "status": "healthy" if is_healthy else "degraded",
         "service": "secure-smtp",
         "version": "0.1.0",
-        "auth": {
-            "api_auth": {
-                "enabled": AUTH_REQUIRED,
-                "scheme": "X-API-Key / Bearer / Query",
-            },
-            "mongodb_auth": {
-                "enabled": mongo_status.get("auth_enabled", False),
-                "required": mongo_status.get("auth_required", False),
-                "user": mongo_status.get("authenticated_user"),
-                "auth_source": mongo_status.get("auth_source"),
-            },
-        },
-        "database": {
-            "status": mongo_status.get("status"),
-            "database": mongo_status.get("database"),
-            "ping": mongo_status.get("ping", False),
-            "uri_masked": mongo_status.get("uri_masked"),
-        },
+        "database": {"status": mongo_status.get("status"), "ping": mongo_status.get("ping", False)},
     }
 
 

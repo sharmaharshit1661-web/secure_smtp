@@ -1,112 +1,61 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUser, useClerk } from '@clerk/clerk-react';
+import { useUser, useClerk, useAuth as useClerkAuth } from '@clerk/clerk-react';
+import { authRequest, setTokenProvider } from '../api/client';
 
 const AuthContext = createContext(null);
-
 // eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  return context;
 }
 
 export function LocalAuthProvider({ children }) {
   const navigate = useNavigate();
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('secure_smtp_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  // Sync state across window / tab events
+  const [user, setUser] = useState(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   useEffect(() => {
-    const handleStorage = (e) => {
-      if (e.key === 'secure_smtp_user') {
-        try {
-          setUser(e.newValue ? JSON.parse(e.newValue) : null);
-        } catch {
-          setUser(null);
-        }
-      }
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    let active = true;
+    // Old demo objects never establish a session.
+    localStorage.removeItem('secure_smtp_user');
+    authRequest('/me').then(data => { if (active) setUser(data); })
+      .catch(() => { if (active) setUser(null); })
+      .finally(() => { if (active) setIsLoaded(true); });
+    return () => { active = false; };
   }, []);
-
-  const login = (userData) => {
-    try {
-      localStorage.setItem('secure_smtp_user', JSON.stringify(userData));
-    } catch {
-      // ignore
-    }
-    setUser(userData);
+  async function login(credentials) {
+    const verified = await authRequest('/login', credentials);
+    setUser(verified);
     navigate('/dashboard');
-  };
-
-  const logout = () => {
-    try {
-      localStorage.removeItem('secure_smtp_user');
-    } catch {
-      // ignore
-    }
+  }
+  async function logout() {
+    await authRequest('/logout', {});
     setUser(null);
-    // Explicitly close the dashboard and return to the landing page
     navigate('/', { replace: true });
-  };
-
-  const value = {
-    isAuthenticated: Boolean(user),
-    user,
-    login,
-    logout,
-    isClerkEnabled: false,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  }
+  return <AuthContext.Provider value={{ user, isLoaded, isAuthenticated: Boolean(user), login, logout, isClerkEnabled: false }}>{children}</AuthContext.Provider>;
 }
 
 export function ClerkAuthProvider({ children }) {
   const navigate = useNavigate();
-  const { user: clerkUser, isLoaded } = useUser();
+  const { user, isLoaded } = useUser();
+  const { getToken } = useClerkAuth();
   const clerk = useClerk();
-
-  const user = clerkUser
-    ? {
-        name: clerkUser.fullName || clerkUser.firstName || clerkUser.primaryEmailAddress?.emailAddress?.split('@')[0] || 'Operator',
-        email: clerkUser.primaryEmailAddress?.emailAddress || '',
-        role: 'Verified Operator',
-        clearance: 'Level 4 Cryptographic Clearance',
-      }
-    : null;
-
-  const login = () => {
-    navigate('/dashboard');
-  };
-
-  const logout = async () => {
-    try {
-      await clerk.signOut();
-    } catch (e) {
-      console.error('Clerk sign out error', e);
-    }
-    // Explicitly close the dashboard and return to the landing page
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setTokenProvider(getToken);
+    setReady(true);
+    return () => setTokenProvider(null);
+  }, [getToken]);
+  async function logout() {
+    await clerk.signOut();
     navigate('/', { replace: true });
-  };
-
-  const value = {
-    isAuthenticated: Boolean(clerkUser),
-    user,
-    login,
-    logout,
-    isClerkEnabled: true,
-    isLoaded,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  }
+  const profile = user ? {
+    name: user.fullName || user.firstName || 'Operator',
+    email: user.primaryEmailAddress?.emailAddress || '',
+    role: 'Authenticated operator',
+  } : null;
+  return <AuthContext.Provider value={{ user: profile, isLoaded: isLoaded && ready, isAuthenticated: Boolean(user), logout, isClerkEnabled: true }}>{children}</AuthContext.Provider>;
 }

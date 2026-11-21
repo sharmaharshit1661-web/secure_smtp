@@ -119,7 +119,7 @@ def test_websocket_auth_rejection_with_invalid_token():
 
 def test_websocket_auth_acceptance_with_valid_token():
     """Connecting to WebSocket with the valid API key token succeeds."""
-    with client.websocket_connect(f"/ws/live?token={DEFAULT_DEV_API_KEY}") as ws:
+    with client.websocket_connect("/ws/live", headers={"X-API-Key": DEFAULT_DEV_API_KEY}) as ws:
         ws.send_text("ping")
         assert ws.receive_text() == "pong"
 
@@ -162,7 +162,7 @@ def test_ssrf_metadata_blocked():
     }
     resp = client.post("/api/live/dispatch-custom", json=payload, headers=headers)
     assert resp.status_code == 422
-    assert "SSRF" in str(resp.json())
+    assert resp.json()["detail"][0]["loc"] == ["body", "server_ip"]
 
 
 def test_ssrf_port_scanning_blocked():

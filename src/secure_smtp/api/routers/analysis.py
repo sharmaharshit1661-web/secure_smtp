@@ -86,7 +86,7 @@ async def analyze_pcap(
     except Exception as err:
         pcap_path.unlink(missing_ok=True)
         logger.error("Failed to stream upload to disk: %s", err)
-        raise HTTPException(status_code=500, detail=f"Failed to save upload: {err}")
+        raise HTTPException(status_code=500, detail="Failed to save upload; check server logs")
 
     # Validate PCAP magic bytes signature
     if total_bytes < 4 or bytes(header_bytes[:4]) not in PCAP_MAGIC_SIGNATURES:

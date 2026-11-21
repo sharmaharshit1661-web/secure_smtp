@@ -147,6 +147,8 @@ def _reassemble_direction(
 
     # Build the final byte stream, filling gaps with empty bytes if needed
     for seg in segments:
+        if seg.offset + len(seg.data) > 16 * 1024 * 1024:
+            raise ValueError("TCP sequence span exceeds the 16 MiB per-direction limit")
         current_len = len(total_data)
         if seg.offset > current_len:
             # Gap in the data — fill with zeros (indicates missing packets)

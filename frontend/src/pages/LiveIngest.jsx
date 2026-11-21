@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   uploadPcap,
-  getReportUrl,
+  downloadReport,
   getLiveStatus,
   clearLiveHistory,
   getLiveWebSocketUrl,
@@ -33,12 +33,17 @@ export default function LiveIngest() {
       .then(setLabStatus)
       .catch(() => {});
 
-    const wsUrl = getLiveWebSocketUrl();
+    const statusTimer = setInterval(() => {
+      getLiveStatus().then(setLabStatus).catch(() => setLabStatus(null));
+    }, 10000);
+    let disposed = false;
     let ws;
     let timer;
 
-    function connectWs() {
+    async function connectWs() {
       try {
+        const wsUrl = await getLiveWebSocketUrl();
+        if (disposed) return;
         ws = new WebSocket(wsUrl);
         ws.onopen = () => {
           setWsConnected(true);
@@ -55,7 +60,7 @@ export default function LiveIngest() {
         };
         ws.onclose = () => {
           setWsConnected(false);
-          timer = setTimeout(connectWs, 3000);
+          if (!disposed) timer = setTimeout(connectWs, 3000);
         };
         ws.onerror = () => {
           setWsConnected(false);
@@ -68,6 +73,8 @@ export default function LiveIngest() {
     connectWs();
 
     return () => {
+      disposed = true;
+      clearInterval(statusTimer);
       if (timer) clearTimeout(timer);
       if (ws) ws.close();
     };
@@ -138,7 +145,7 @@ export default function LiveIngest() {
     }
   };
 
-  const lanIp = labStatus?.lan_ip || '192.168.1.40';
+  const lanIp = labStatus?.lan_ip || 'Unavailable';
 
   const PORT_LISTENERS = [
     {
@@ -210,7 +217,7 @@ export default function LiveIngest() {
             </h1>
             <span className="live-surveillance-chip">
               <span className="live-surveillance-dot" />
-              <span>{wsConnected ? 'Live Sockets Active' : 'Connecting Stream…'}</span>
+              <span>{wsConnected ? 'Telemetry connected' : 'Telemetry disconnected'}</span>
             </span>
           </div>
           <p className="text-secondary text-sm">
@@ -350,7 +357,7 @@ export default function LiveIngest() {
               type="file"
               ref={fileInputRef}
               style={{ display: 'none' }}
-              accept=".pcap,.pcapng,.cap"
+              accept=".pcap,.pcapng"
               onChange={handleFileSelect}
             />
 
@@ -371,13 +378,12 @@ export default function LiveIngest() {
                     Drag &amp; drop PCAP trace file here, or <span className="text-accent underline">browse</span>
                   </div>
                   <div className="text-secondary text-xs">
-                    Accepts standard Wireshark / tcpdump captures up to 50 MB
+                    Accepts PCAP / PCAPNG captures up to {labStatus?.max_upload_size_mb ?? 100} MB
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono text-muted" style={{ background: '#121214', border: '1px solid #222226' }}>.pcap</span>
                   <span className="px-2 py-0.5 rounded text-[10px] font-mono text-muted" style={{ background: '#121214', border: '1px solid #222226' }}>.pcapng</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono text-muted" style={{ background: '#121214', border: '1px solid #222226' }}>.cap</span>
                 </div>
               </div>
             ) : (
@@ -445,12 +451,16 @@ export default function LiveIngest() {
               </h2>
             </div>
             <p className="text-secondary text-xs mb-4">
-              Export boardroom-grade compliance certification dossiers and raw cryptographic vector telemetry.
+              Export assessment findings and supporting connection evidence.
             </p>
 
             <div className="flex flex-col gap-2.5">
               <a
-                href={getReportUrl(resultJobId || 'demo_report', 'pdf')}
+                href="#" onClick={async (event) => {
+                  event.preventDefault();
+                  try { await downloadReport(resultJobId || 'demo_report', 'pdf'); }
+                  catch (err) { setError(err.message); }
+                }}
                 target="_blank"
                 rel="noreferrer"
                 className="report-export-item"
@@ -464,7 +474,7 @@ export default function LiveIngest() {
                   </div>
                   <div>
                     <div className="font-semibold text-xs text-primary">PDF Executive Briefing</div>
-                    <div className="text-secondary text-[11px]">NIST SP 800-52r2 certification brief with executive scorecard</div>
+                    <div className="text-secondary text-[11px]">Transport-security assessment with findings and recommendations</div>
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-xs text-secondary font-mono">
@@ -474,7 +484,11 @@ export default function LiveIngest() {
               </a>
 
               <a
-                href={getReportUrl(resultJobId || 'demo_report', 'html')}
+                href="#" onClick={async (event) => {
+                  event.preventDefault();
+                  try { await downloadReport(resultJobId || 'demo_report', 'html'); }
+                  catch (err) { setError(err.message); }
+                }}
                 target="_blank"
                 rel="noreferrer"
                 className="report-export-item"
@@ -498,7 +512,11 @@ export default function LiveIngest() {
               </a>
 
               <a
-                href={getReportUrl(resultJobId || 'demo_report', 'json')}
+                href="#" onClick={async (event) => {
+                  event.preventDefault();
+                  try { await downloadReport(resultJobId || 'demo_report', 'json'); }
+                  catch (err) { setError(err.message); }
+                }}
                 target="_blank"
                 rel="noreferrer"
                 className="report-export-item"
@@ -539,12 +557,12 @@ export default function LiveIngest() {
                   </h2>
                 </div>
                 <p className="text-secondary text-xs">
-                  Passive local background daemons listening on interface <code className="font-mono text-accent">0.0.0.0</code>:
+                  Controlled SMTP lab scenarios. Status is reported by the backend.
                 </p>
               </div>
               <div className="socket-active-pill">
-                <span className="socket-pulse-led" />
-                <span>4 DAEMONS READY</span>
+                <span className="socket-pulse-led" style={{ opacity: labStatus?.is_running ? 1 : 0.2, animation: labStatus?.is_running ? undefined : 'none' }} />
+                <span>{labStatus === null ? 'STATUS UNKNOWN' : labStatus.is_running ? 'LAB RUNNING' : 'LAB STOPPED'}</span>
               </div>
             </div>
 
@@ -599,8 +617,8 @@ export default function LiveIngest() {
                       {item.riskTier}
                     </span>
                     <div className="socket-active-pill">
-                      <span className="socket-pulse-led" />
-                      <span>ONLINE</span>
+                      <span className="socket-pulse-led" style={{ opacity: labStatus?.is_running ? 1 : 0.2, animation: labStatus?.is_running ? undefined : 'none' }} />
+                      <span>{labStatus === null ? 'UNKNOWN' : labStatus.is_running ? 'ONLINE' : 'OFFLINE'}</span>
                     </div>
                   </div>
                 </div>
@@ -617,7 +635,7 @@ export default function LiveIngest() {
                 </span>
               </div>
               <p className="text-xs text-secondary leading-relaxed">
-                Incoming TCP handshakes on ports 2525–2528 are mirrored into memory, parsed for TLS version and cipher negotiations, evaluated by the Isolation Forest ML engine, and broadcasted to the feed below.
+                The controlled mail lab records connection metadata and rule-based findings. This feed does not capture traffic from external mail servers.
               </p>
             </div>
           </div>

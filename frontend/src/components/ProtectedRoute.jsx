@@ -2,11 +2,11 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function ProtectedRoute({ children }) {
-  const { isAuthenticated, isClerkEnabled, isLoaded } = useAuth();
+  const { isAuthenticated, isLoaded } = useAuth();
   const location = useLocation();
 
   // If Clerk is enabled, wait until Clerk finishes initializing
-  if (isClerkEnabled && isLoaded === false) {
+  if (isLoaded === false) {
     return (
       <div style={{
         minHeight: '100vh',
@@ -20,7 +20,7 @@ export default function ProtectedRoute({ children }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <span className="auth-spinner" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: '#10B981' }} />
-          Verifying security clearance…
+          Verifying session…
         </div>
       </div>
     );

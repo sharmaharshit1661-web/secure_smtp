@@ -31,13 +31,9 @@ class SlidingWindowRateLimiter:
 
     def _get_client_key(self, request: Request, scope_name: str) -> str:
         """Derive rate-limit bucket key from client IP / X-Forwarded-For and endpoint scope."""
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            ip = forwarded.split(",")[0].strip()
-        elif request.client and request.client.host:
-            ip = request.client.host
-        else:
-            ip = "127.0.0.1"
+        # Uvicorn may normalize this via explicitly trusted proxies. Never parse
+        # a raw forwarding header supplied by the caller here.
+        ip = request.client.host if request.client else "unknown"
 
         return f"{ip}:{scope_name}"
 

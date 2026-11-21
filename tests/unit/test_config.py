@@ -11,12 +11,15 @@ from unittest.mock import patch
 from secure_smtp.config import Settings, get_settings
 
 
-def test_default_settings():
+def test_default_settings(monkeypatch):
     """Verify default settings initialization."""
-    settings = Settings()
+    for key in list(os.environ):
+        if key.startswith("SECURE_SMTP_"):
+            monkeypatch.delenv(key)
+    settings = Settings(_env_file=None)
     assert settings.app_name == "Secure SMTP"
     assert settings.app_version == "0.1.0"
-    assert settings.api_key == "securesmtp_live_secret_key"
+    assert settings.api_key == ""
     assert settings.auth_required is True
     assert settings.mongo_host == "localhost"
     assert settings.mongo_port == 27017

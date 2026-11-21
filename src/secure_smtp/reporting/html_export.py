@@ -337,7 +337,7 @@ def generate_html_report(report_data: dict, output_path: str) -> str:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
-    env = Environment(loader=BaseLoader())
+    env = Environment(loader=BaseLoader(), autoescape=True)
     template = env.from_string(REPORT_TEMPLATE)
     html = template.render(data=report_data)
 

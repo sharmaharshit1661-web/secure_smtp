@@ -151,7 +151,7 @@ export default function Layout() {
                       {user.name || 'Operator'}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
-                      {user.role ? user.role.split(' ')[0] : 'SecOps'} · L4
+                      {user.role || 'Operator'}
                     </span>
                   </div>
                 </div>

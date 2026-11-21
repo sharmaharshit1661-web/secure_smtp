@@ -20,7 +20,7 @@ services:
     restart: unless-stopped
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${SECURE_SMTP_MONGO_USER:-secure_admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:-secure_smtp_live_db_key_2026}
+      MONGO_INITDB_ROOT_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set a unique database password}
       MONGO_INITDB_DATABASE: ${SECURE_SMTP_MONGO_DB:-secure_smtp}
     ports:
       - "127.0.0.1:27017:27017"
@@ -68,14 +68,19 @@ services:
       - SECURE_SMTP_MONGO_PORT=27017
       - SECURE_SMTP_MONGO_DB=secure_smtp
       - SECURE_SMTP_MONGO_USER=${SECURE_SMTP_MONGO_USER:-secure_admin}
-      - SECURE_SMTP_MONGO_PASSWORD=${SECURE_SMTP_MONGO_PASSWORD:-secure_smtp_live_db_key_2026}
+      - SECURE_SMTP_MONGO_PASSWORD=${SECURE_SMTP_MONGO_PASSWORD:?Set a unique database password}
       - SECURE_SMTP_MONGO_AUTH_DB=admin
       - SECURE_SMTP_MONGO_AUTH_REQUIRED=true
-      - SECURE_SMTP_API_KEY=${SECURE_SMTP_API_KEY:-securesmtp_live_secret_key}
+      - SECURE_SMTP_API_KEY=${SECURE_SMTP_API_KEY:?Set a unique service API key}
       - SECURE_SMTP_AUTH_REQUIRED=true
+      - SECURE_SMTP_LOCAL_ADMIN_EMAIL=${SECURE_SMTP_LOCAL_ADMIN_EMAIL:-}
+      - SECURE_SMTP_LOCAL_PASSWORD_HASH=${SECURE_SMTP_LOCAL_PASSWORD_HASH:-}
+      - SECURE_SMTP_CLERK_ISSUER=${SECURE_SMTP_CLERK_ISSUER:-}
+      - SECURE_SMTP_CLERK_ORG_ID=${SECURE_SMTP_CLERK_ORG_ID:-}
+      - SECURE_SMTP_DISPATCH_ALLOWED_IPS=${SECURE_SMTP_DISPATCH_ALLOWED_IPS:-127.0.0.1,::1}
       - SECURE_SMTP_RATE_LIMIT_ENABLED=${SECURE_SMTP_RATE_LIMIT_ENABLED:-true}
       - SECURE_SMTP_MAX_UPLOAD_SIZE_MB=${SECURE_SMTP_MAX_UPLOAD_SIZE_MB:-100}
-      - SECURE_SMTP_ENABLE_LIVE_LAB=${SECURE_SMTP_ENABLE_LIVE_LAB:-true}
+      - SECURE_SMTP_ENABLE_LIVE_LAB=${SECURE_SMTP_ENABLE_LIVE_LAB:-false}
       - SECURE_SMTP_CORS_ORIGINS=${SECURE_SMTP_CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1}
       - SECURE_SMTP_ALERTS_ENABLED=${SECURE_SMTP_ALERTS_ENABLED:-false}
       - SECURE_SMTP_ALERT_WEBHOOK_URL=${SECURE_SMTP_ALERT_WEBHOOK_URL:-}
@@ -94,7 +99,6 @@ services:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_API_KEY: ${SECURE_SMTP_API_KEY:-securesmtp_live_secret_key}
         VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
     container_name: secure_smtp_frontend
     restart: unless-stopped

@@ -47,10 +47,10 @@ def test_protected_endpoint_with_valid_bearer_token():
     assert response.status_code == 200
 
 
-def test_protected_endpoint_with_valid_query_param():
-    """Valid ?api_key=<key> query parameter grants access."""
+def test_query_string_key_is_rejected():
+    """Secrets in URLs must not authenticate a browser."""
     response = client.get(f"/api/hosts?api_key={DEFAULT_DEV_API_KEY}")
-    assert response.status_code == 200
+    assert response.status_code == 401
 
 
 def test_protected_endpoint_with_invalid_api_key_returns_403():

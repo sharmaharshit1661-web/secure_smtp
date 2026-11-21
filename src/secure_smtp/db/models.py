@@ -200,6 +200,7 @@ class Session(BaseModel):
     """A single email protocol session extracted from the PCAP."""
 
     id: int | None = None
+    job_id: str = ""
     pcap_source: str = ""
     src_ip: str = ""
     dst_ip: str = ""

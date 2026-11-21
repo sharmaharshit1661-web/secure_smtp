@@ -65,7 +65,7 @@ class Settings(BaseSettings):
 
     # ── API Authentication ──
     api_key: str = Field(
-        default="securesmtp_live_secret_key",
+        default="",
         validation_alias=AliasChoices("SECURE_SMTP_API_KEY", "API_KEY"),
         description="Master API authentication key",
     )
@@ -74,6 +74,12 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SECURE_SMTP_AUTH_REQUIRED", "AUTH_REQUIRED"),
         description="Whether API authentication is enforced on sensitive endpoints",
     )
+
+    local_admin_email: str = Field(default="", validation_alias="SECURE_SMTP_LOCAL_ADMIN_EMAIL")
+    local_password_hash: str = Field(default="", validation_alias="SECURE_SMTP_LOCAL_PASSWORD_HASH")
+    clerk_issuer: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_ISSUER")
+    clerk_org_id: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_ORG_ID")
+    dispatch_allowed_ips: str = Field(default="127.0.0.1,::1", validation_alias="SECURE_SMTP_DISPATCH_ALLOWED_IPS")
 
     # ── Alerting & Webhooks ──
     alerts_enabled: bool = Field(

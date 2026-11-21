@@ -1,65 +1,57 @@
-"""
-API Authentication & Authorization Module — Secure SMTP.
-
-Provides constant-time API key verification via:
-1. 'X-API-Key' HTTP Header
-2. 'Authorization: Bearer <key>' Header
-3. '?api_key=<key>' Query parameter (for direct file downloads/reports)
-"""
+"""Authenticate browser sessions and separately provisioned machine API keys."""
 
 import secrets
-from typing import Optional
 
-from fastapi import HTTPException, Query, Security, status
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from secure_smtp.config import get_settings
 
-# Configurable API Key and Auth Settings from central configuration
-settings = get_settings()
 DEFAULT_DEV_API_KEY = "securesmtp_live_secret_key"
-API_KEY_ENV = settings.api_key
-AUTH_REQUIRED = settings.auth_required
-
-# Security Schemes for OpenAPI / Swagger UI
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False, description="API Key Header")
-http_bearer = HTTPBearer(auto_error=False, description="Bearer Token")
+AUTH_REQUIRED = get_settings().auth_required
 
 
-async def verify_api_key(
-    header_key: Optional[str] = Security(api_key_header),
-    bearer_creds: Optional[HTTPAuthorizationCredentials] = Security(http_bearer),
-    query_key: Optional[str] = Query(None, alias="api_key", description="API key parameter for direct downloads"),
-) -> str:
-    """
-    Validate API key from X-API-Key header, Authorization Bearer token, or api_key query param.
-    Uses constant-time comparison (secrets.compare_digest) to prevent timing attacks.
-    """
-    if not AUTH_REQUIRED:
+async def authenticate_request(request: Request) -> str:
+    from secure_smtp.api.sessions_auth import (
+        COOKIE,
+        check_origin,
+        session_identity,
+        verify_clerk_token,
+    )
+
+    settings = get_settings()
+    authorization = request.headers.get("authorization", "")
+    bearer = authorization[7:].strip() if authorization.lower().startswith("bearer ") else None
+    if bearer and bearer.count(".") == 2:
+        return await run_in_threadpool(verify_clerk_token, bearer)
+
+    cookie = request.cookies.get(COOKIE)
+    if cookie:
+        identity = session_identity(cookie)
+        if not identity:
+            raise HTTPException(401, "Session expired. Sign in again.")
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            check_origin(request.headers.get("origin"))
+        return identity
+
+    # Machine clients use headers. Query-string credentials are deliberately rejected.
+    provided = request.headers.get("x-api-key") or bearer
+    if not settings.auth_required and not settings.is_production:
         return "anonymous"
-
-    expected_key = API_KEY_ENV.strip()
-    provided_key: Optional[str] = None
-
-    if header_key:
-        provided_key = header_key.strip()
-    elif bearer_creds and bearer_creds.credentials:
-        provided_key = bearer_creds.credentials.strip()
-    elif query_key:
-        provided_key = query_key.strip()
-
-    if not provided_key:
+    if not provided:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing API authentication. Provide 'X-API-Key' header, 'Authorization: Bearer <key>', or '?api_key=' parameter.",
-            headers={"WWW-Authenticate": "ApiKey, Bearer"},
+            401, "Missing API authentication", headers={"WWW-Authenticate": "Bearer"}
         )
+    expected = settings.api_key.strip()
+    if not expected or (
+        settings.is_production and (expected == DEFAULT_DEV_API_KEY or len(expected) < 32)
+    ):
+        raise HTTPException(503, "API authentication is not configured securely")
+    if not secrets.compare_digest(provided.strip(), expected):
+        raise HTTPException(403, "Invalid API key. Access denied.")
+    return "service-account"
 
-    if not secrets.compare_digest(provided_key, expected_key):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key. Access denied.",
-            headers={"WWW-Authenticate": "ApiKey, Bearer"},
-        )
 
-    return provided_key
+async def verify_api_key(request: Request) -> str:
+    """Compatibility dependency used by all protected routers."""
+    return await authenticate_request(request)

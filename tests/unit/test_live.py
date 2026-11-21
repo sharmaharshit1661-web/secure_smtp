@@ -78,7 +78,7 @@ def test_live_api_endpoints():
 
 def test_websocket_connection():
     client = TestClient(app)
-    with client.websocket_connect("/ws/live") as websocket:
+    with client.websocket_connect("/ws/live", headers={"X-API-Key": "securesmtp_live_secret_key"}) as websocket:
         websocket.send_text("ping")
         resp = websocket.receive_text()
         assert resp == "pong"

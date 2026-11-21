@@ -67,14 +67,14 @@ function CertNode({ cert, defaultOpen }) {
               <div className="info-item-value">
                 {cert.self_signed
                   ? <span className="text-critical font-semibold">Self-signed — untrusted</span>
-                  : <span className="text-clean font-semibold">CA-issued</span>}
+                  : <span className="text-clean font-semibold">Issuer declared</span>}
               </div>
             </div>
             <div>
-              <div className="info-item-label">Chain Valid</div>
+              <div className="info-item-label">Observed chain checks</div>
               <div className="info-item-value">
                 {cert.chain_valid
-                  ? <span className="text-clean font-semibold">Valid</span>
+                  ? <span className="text-clean font-semibold">No failure observed; trust not verified</span>
                   : <span className="text-critical font-semibold">Invalid</span>}
               </div>
             </div>

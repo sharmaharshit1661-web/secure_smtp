@@ -33,15 +33,15 @@ class AlertEngine:
         self,
         webhook_url: Optional[str] = None,
         secret: Optional[str] = None,
-        min_severity: str = "HIGH",
-        risk_threshold: float = 75.0,
+        min_severity: Optional[str] = None,
+        risk_threshold: Optional[float] = None,
         enabled: Optional[bool] = None,
     ):
         settings = get_settings()
         self.webhook_url = webhook_url or settings.alert_webhook_url
         self.secret = secret or settings.alert_webhook_secret
         self.min_severity = (min_severity or settings.alert_min_severity).upper()
-        self.risk_threshold = risk_threshold or settings.alert_risk_threshold
+        self.risk_threshold = settings.alert_risk_threshold if risk_threshold is None else risk_threshold
         self.enabled = enabled if enabled is not None else (settings.alerts_enabled and bool(self.webhook_url))
 
     def should_alert(self, findings: List[Dict[str, Any]], risk_score: float) -> bool:
@@ -75,7 +75,7 @@ class AlertEngine:
         critical_findings = [
             f.get("title") or f.get("rule_id", "Finding")
             for f in findings
-            if f.get("severity") in ("CRITICAL", "HIGH")
+            if str(f.get("severity", "")).upper() in ("CRITICAL", "HIGH")
         ]
 
         payload = {
@@ -149,13 +149,13 @@ class AlertEngine:
             with httpx.Client(timeout=5.0) as client:
                 res = client.post(self.webhook_url, content=body_bytes, headers=headers)
                 if res.is_success:
-                    logger.info("Security alert dispatched to webhook: %s (status: %d)", self.webhook_url, res.status_code)
+                    logger.info("Security alert dispatched (HTTP %d)", res.status_code)
                     return True
                 else:
                     logger.warning("Webhook dispatch failed with HTTP %d: %s", res.status_code, res.text[:200])
                     return False
         except Exception as e:
-            logger.error("Failed to send webhook alert: %s", e)
+            logger.error("Webhook delivery failed (%s)", type(e).__name__)
             return False
 
 

@@ -47,9 +47,12 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup initialization and graceful shutdown."""
     settings = get_settings()
 
+    if settings.is_production and not settings.auth_required:
+        raise RuntimeError("Authentication cannot be disabled in production")
+
     # Fail-fast check for default development secrets in production
     if settings.is_production and settings.auth_required:
-        if settings.api_key == "securesmtp_live_secret_key":
+        if settings.api_key == "securesmtp_live_secret_key" or len(settings.api_key.strip()) < 32:
             logger.critical(
                 "FATAL CONFIGURATION: Insecure default development API key detected in production mode. "
                 "Set SECURE_SMTP_API_KEY environment variable to a secure secret."
@@ -149,6 +152,9 @@ REPORTS_DIR = settings.reports_dir
 
 # ── Register Domain Routers ──
 
+from secure_smtp.api.sessions_auth import router as authentication_router
+
+app.include_router(authentication_router)
 app.include_router(system_router)
 app.include_router(analysis_router)
 app.include_router(hosts_router)

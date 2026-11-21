@@ -12,7 +12,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from scapy.all import IP, TCP, rdpcap
+from scapy.all import IP, TCP, IPv6, PcapReader
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +109,10 @@ class PacketStream:
 
 def _extract_packet(pkt, timestamp: float) -> RawPacket | None:
     """Extract a RawPacket from a scapy packet if it contains TCP."""
-    if not pkt.haslayer(IP) or not pkt.haslayer(TCP):
+    if not (pkt.haslayer(IP) or pkt.haslayer(IPv6)) or not pkt.haslayer(TCP):
         return None
 
-    ip_layer = pkt[IP]
+    ip_layer = pkt[IP] if pkt.haslayer(IP) else pkt[IPv6]
     tcp_layer = pkt[TCP]
     payload = bytes(tcp_layer.payload) if tcp_layer.payload else b""
 
@@ -163,23 +163,29 @@ def read_pcap(filepath: str | Path) -> list[PacketStream]:
     streams: dict[StreamKey, PacketStream] = {}
     packet_count = 0
 
-    try:
-        packets = rdpcap(str(filepath))
-    except Exception as e:
-        logger.error("Failed to read PCAP %s: %s", filepath, e)
-        raise
-
-    for pkt in packets:
-        timestamp = float(pkt.time) if hasattr(pkt, "time") else 0.0
-        raw = _extract_packet(pkt, timestamp)
-        if raw is None:
-            continue
-
-        packet_count += 1
-        key = StreamKey.from_packet(raw)
-        if key not in streams:
-            streams[key] = PacketStream(key=key)
-        streams[key].packets.append(raw)
+    payload_bytes = 0
+    # Decode incrementally; bound objects, streams and retained payload independently
+    # of upload size. Reject oversized captures rather than return partial evidence.
+    with PcapReader(str(filepath)) as packets:
+        for count, pkt in enumerate(packets, 1):
+            if count > 100_000:
+                raise ValueError("Capture exceeds the 100000 packet analysis limit")
+            timestamp = float(pkt.time) if hasattr(pkt, "time") else 0.0
+            raw = _extract_packet(pkt, timestamp)
+            if raw is None:
+                continue
+            payload_bytes += len(raw.payload)
+            if payload_bytes > 128 * 1024 * 1024:
+                raise ValueError("Capture exceeds the retained payload limit")
+            packet_count += 1
+            key = StreamKey.from_packet(raw)
+            if key not in streams:
+                if len(streams) >= 10_000:
+                    raise ValueError("Capture exceeds the 10000 stream analysis limit")
+                streams[key] = PacketStream(key=key)
+            if len(streams[key].packets) >= 5_000:
+                raise ValueError("A connection exceeds the 5000 packet analysis limit")
+            streams[key].packets.append(raw)
 
     stream_list = list(streams.values())
     logger.info(

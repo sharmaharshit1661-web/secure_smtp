@@ -97,11 +97,6 @@ def test_health_endpoint_reports_auth_posture():
     data = response.json()
 
     assert data["service"] == "secure-smtp"
-    assert "auth" in data
-    assert "api_auth" in data["auth"]
-    assert data["auth"]["api_auth"]["enabled"] is True
-
-    assert "mongodb_auth" in data["auth"]
-    assert "enabled" in data["auth"]["mongodb_auth"]
-    assert "database" in data
+    assert "auth" not in data
+    assert "uri_masked" not in data["database"]
     assert data["database"]["status"] in ("connected", "degraded", "disconnected")

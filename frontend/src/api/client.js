@@ -6,23 +6,30 @@
 // while still supporting explicit VITE_API_BASE or VITE_API_URL for cross-origin deployments (e.g. Vercel -> Render).
 const rawBase = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || '';
 export const API_BASE = rawBase.replace(/\/+$/, '');
-export const API_KEY = import.meta.env.VITE_API_KEY || 'securesmtp_live_secret_key';
-
-export function getLiveWebSocketUrl() {
-  if (API_BASE) {
-    const wsBase = API_BASE.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-    return `${wsBase}/ws/live?token=${encodeURIComponent(API_KEY)}`;
-  }
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${protocol}//${window.location.host}/ws/live?token=${encodeURIComponent(API_KEY)}`;
+let tokenProvider = null;
+export function setTokenProvider(provider) { tokenProvider = provider; }
+async function authHeaders() {
+  const token = tokenProvider ? await tokenProvider() : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+export async function authRequest(path, body) {
+  return request(`/api/auth${path}`, body === undefined ? {} : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+}
+export async function getLiveWebSocketUrl() {
+  const { ticket } = await authRequest('/ws-ticket', {});
+  const base = API_BASE || window.location.origin;
+  return `${base.replace(/^http/, 'ws')}/ws/live?token=${encodeURIComponent(ticket)}`;
 }
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
   const res = await fetch(url, {
     ...options,
+    credentials: 'include',
     headers: {
-      'X-API-Key': API_KEY,
+      ...await authHeaders(),
       ...options.headers,
     },
   });
@@ -59,9 +66,10 @@ export async function uploadPcap(file) {
   const url = `${API_BASE}/api/analyze`;
   const res = await fetch(url, {
     method: 'POST',
+    credentials: 'include',
     body: formData,
     headers: {
-      'X-API-Key': API_KEY,
+      ...await authHeaders(),
     },
   });
   if (!res.ok) {
@@ -71,8 +79,17 @@ export async function uploadPcap(file) {
   return res.json();
 }
 
-export function getReportUrl(jobId, format) {
-  return `${API_BASE}/api/reports/${jobId}.${format}?api_key=${encodeURIComponent(API_KEY)}`;
+export async function downloadReport(jobId, format) {
+  const res = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(jobId)}.${format}`, {
+    credentials: 'include', headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error('Unable to download report. Check your session and assessment.');
+  const url = URL.createObjectURL(await res.blob());
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `secure_smtp_report_${jobId}.${format}`;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export async function getCopilotRemediation(sessionId, serverType = 'postfix') {
