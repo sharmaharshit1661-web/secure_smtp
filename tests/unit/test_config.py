@@ -45,6 +45,8 @@ def test_cors_headers_comma_separated_parsing():
 def test_mongo_uri_assembly_unauthenticated():
     """Verify connection URI without authentication."""
     settings = Settings(
+        _env_file=None,
+        mongo_uri=None,
         mongo_user="",
         mongo_password="",
         mongo_host="10.0.0.5",
@@ -57,6 +59,8 @@ def test_mongo_uri_assembly_unauthenticated():
 def test_mongo_uri_assembly_authenticated():
     """Verify connection URI with credentials and special characters."""
     settings = Settings(
+        _env_file=None,
+        mongo_uri=None,
         mongo_user="app_user",
         mongo_password="p@ss:w/ord?!",
         mongo_host="db.internal",
@@ -74,6 +78,16 @@ def test_mongo_uri_assembly_authenticated():
     assert "p@ss:w/ord?!" not in masked
     assert "p%40ss%3Aw%2Ford%3F%21" not in masked
     assert "mongodb://app_user:******@db.internal:27017/secure_smtp" in masked
+
+
+def test_mongo_uri_auto_normalization_with_special_characters():
+    """Verify raw URI with unescaped special characters (#, @, spaces) is properly normalized."""
+    raw_atlas_uri = "mongodb+srv://testUser:spec!al#pwd@123 @cluster0.example.mongodb.net/"
+    settings = Settings(_env_file=None, mongo_uri=raw_atlas_uri)
+    normalized = settings.get_mongo_connection_uri()
+    assert "spec%21al%23pwd%40123" in normalized
+    assert "cluster0.example.mongodb.net" in normalized
+    assert " " not in normalized
 
 
 def test_explicit_mongo_uri_override():

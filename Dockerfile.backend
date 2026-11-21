@@ -52,9 +52,11 @@ RUN groupadd -g 1001 securesmtp && \
 
 WORKDIR /app
 
-# Copy application source & configurations
+# Copy application source, utilities & configurations
 COPY src/ /app/src/
 COPY pyproject.toml /app/
+COPY demo_client.py attacker_proxy.py /app/
+COPY scripts/ /app/scripts/
 
 # Create runtime directories with appropriate permissions
 RUN mkdir -p /tmp/secure_smtp_uploads /tmp/secure_smtp_reports && \
@@ -62,7 +64,7 @@ RUN mkdir -p /tmp/secure_smtp_uploads /tmp/secure_smtp_reports && \
 
 USER securesmtp
 
-EXPOSE 8000
+EXPOSE 8000 2525 2526 2527 2528
 
 ENV PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
@@ -70,6 +72,6 @@ ENV PYTHONPATH=/app/src \
     SECURE_SMTP_REPORTS_DIR=/tmp/secure_smtp_reports
 
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:8000/api/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
 
-CMD ["uvicorn", "secure_smtp.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["sh", "-c", "uvicorn secure_smtp.api.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

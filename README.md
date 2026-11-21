@@ -138,6 +138,125 @@ Secure SMTP operates a multi-stage forensic analysis pipeline that transforms ra
 
 ---
 
+## 📁 Repository Organization & Architecture
+
+```
+Secure SMTP/
+├── src/
+│   ├── secure_smtp/               # Primary Python backend package
+│   │   ├── config.py              # Centralized Pydantic settings & env loader
+│   │   ├── ai/                    # ML risk scoring, Isolation Forest & AI Copilot
+│   │   ├── alerts/                # Webhook & Slack notification routing
+│   │   ├── api/                   # FastAPI application & modular routers
+│   │   │   ├── main.py            # Clean application entrypoint & middleware
+│   │   │   ├── broker.py          # WebSocket real-time event broker
+│   │   │   ├── pipeline.py        # Asynchronous PCAP analysis pipeline
+│   │   │   └── routers/           # Domain-specific route controllers
+│   │   │       ├── system.py      # Health checks & client downloads
+│   │   │       ├── analysis.py    # PCAP upload & job status
+│   │   │       ├── hosts.py       # Host fleet inventory & drill-downs
+│   │   │       ├── sessions.py    # Session forensics & SHAP explanations
+│   │   │       ├── reports.py     # JSON, HTML, PDF report downloads
+│   │   │       ├── compliance.py  # NIST, PCI-DSS, HIPAA compliance checks
+│   │   │       ├── copilot.py     # AI remediation synthesizer & Q&A
+│   │   │       └── live.py        # Multi-port live mail lab & WebSocket stream
+│   │   ├── compliance/            # Regulatory frameworks & compliance mapping
+│   │   ├── db/                    # MongoDB session managers & Pydantic models
+│   │   ├── ingest/                # PCAP reader, TCP reassembly & protocol ID
+│   │   ├── live/                  # Live mail server, certs & client dispatcher
+│   │   ├── reporting/             # ReportLab PDF, Jinja2 HTML & JSON exporters
+│   │   ├── rules/                 # Declarative YAML rule engine
+│   │   └── tls/                   # TLS handshake parsing, certs & fingerprints
+│   └── securemailscope/           # Backward-compatibility bridge
+├── frontend/                      # React 19 + Vite SOC Web Console
+│   ├── src/
+│   │   ├── components/            # Reusable UI widgets & barrel export
+│   │   ├── pages/                 # Full-page views (Fleet, Sessions, Live, AI)
+│   │   ├── context/               # Authentication & session state context
+│   │   ├── api/                   # Typed API client wrapper
+│   │   ├── utils/                 # Visual formatting & color utilities
+│   │   ├── config/                # Clerk theme configuration
+│   │   ├── App.jsx                # Application routing tree
+│   │   └── main.jsx               # React DOM entrypoint
+│   ├── package.json               # Frontend dependencies & scripts
+│   └── vite.config.js             # Vite configuration & dev proxy
+├── scripts/                       # Maintenance, provisioning & seeding scripts
+│   ├── seed_demo_data.py          # Ingests fixture PCAPs into MongoDB
+│   ├── setup_mongo_auth.py        # Configures SCRAM-SHA-256 DB security
+│   ├── generate_test_pcaps.py     # Scapy synthetic PCAP generator
+│   └── README.md                  # Script documentation & usage guide
+├── tests/                         # Unit & integration test suite
+│   ├── fixtures/pcaps/            # Cryptographic test PCAP vectors
+│   └── unit/                      # 168 comprehensive unit tests
+├── docker/                        # Deployment configurations & Nginx proxy
+├── attacker_proxy.py              # Zero-dependency MITM/downgrade proxy
+├── demo_client.py                 # Zero-dependency interactive SMTP client
+├── start_demo.sh                  # One-command full-stack presentation launcher
+└── pyproject.toml                 # Backend dependencies & pytest config
+```
+
+---
+
+## 🚀 Quick Start Guide
+
+### Prerequisites
+- **Python 3.10+** (with virtual environment)
+- **Node.js 18+** & npm
+- **MongoDB** running locally or in Docker
+
+### 1. Launch the Full Stack (Single Command)
+```bash
+./start_demo.sh
+```
+This automatically:
+1. Activates the Python virtual environment.
+2. Seeds MongoDB with realistic demo traffic.
+3. Starts the FastAPI backend on `http://localhost:8000`.
+4. Starts the Live Mail Lab on ports `2525`, `2526`, `2527`, `2528`.
+5. Starts the React Web Console on `http://localhost:5173`.
+
+### 2. Run Test Suite
+```bash
+# Python backend tests (176 unit tests covering security hardening, AI, and forensics)
+pytest
+
+# Frontend linter (oxlint: 0 warnings, 0 errors)
+npm run lint --prefix frontend
+
+# Frontend production bundle compilation
+npm run build --prefix frontend
+```
+
+### 3. Production Deployment with Docker
+Launch the containerized production stack (MongoDB 7.0, Redis 7, FastAPI backend, Nginx frontend reverse proxy):
+```bash
+# Configure production secrets
+cp .env.example .env
+# Edit .env with your production SECURE_SMTP_API_KEY and Mongo credentials
+
+# Build and start services in detached mode
+docker compose up -d --build
+
+# View operational logs
+docker compose logs -f
+```
+
+---
+
+## 🛡️ Security Hardening & Testing Verification
+
+Secure SMTP includes multi-layered enterprise defense mechanisms ready for penetration testing and red-team audits:
+
+| Security Control | Implementation Mechanism | Red-Team Testing Command |
+|---|---|---|
+| **In-Memory Rate Limiting** | Sliding-window quota (15/min uploads, 5/min database resets, 30/min Copilot) with automatic HTTP 429 & `Retry-After` headers. | Rapidly send 6 requests: `for i in {1..6}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/api/live/clear-history -H "X-API-Key: securesmtp_live_secret_key"; done` (Yields `429 Too Many Requests`). |
+| **PCAP Upload Safety** | Pre-flight magic byte inspection (`0xa1b2c3d4`, `0x0a0d0d0a`) and 64KB chunked streaming with 100MB quota. | `curl -X POST http://localhost:8000/api/analyze -H "X-API-Key: securesmtp_live_secret_key" -F "file=@README.md;filename=fake.pcap"` (Yields `400 Bad Request: Invalid capture format`). |
+| **WebSocket Authentication** | Constant-time token verification (`secrets.compare_digest`) on `/ws/live?token=...` with WS close code 1008. | Connect with an invalid token: `wscat -c "ws://localhost:8000/ws/live?token=invalid"` (Connection drops immediately with code 1008). |
+| **Security Headers & Tracing** | Automatic injection of `X-Request-ID`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, and `Permissions-Policy`. | `curl -i http://localhost:8000/api/health` and inspect defensive response headers. |
+| **Production Fail-Fast Secret Check** | Application refuses to boot in `SECURE_SMTP_ENV=production` if default development secret is retained. | `SECURE_SMTP_ENV=production uvicorn secure_smtp.api.main:app` (Raises `RuntimeError: Refusing to start in production mode...`). |
+
+---
+
 ## 🎯 Target Audience & Operational Context
 
 Secure SMTP is engineered for:

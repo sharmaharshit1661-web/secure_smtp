@@ -3,9 +3,19 @@
  */
 
 // Default to empty string so local Vite dev proxy (/api -> :8000) is leveraged seamlessly without CORS hurdles,
-// while still supporting explicit VITE_API_BASE for cross-origin deployments.
-const API_BASE = import.meta.env.VITE_API_BASE ?? '';
-const API_KEY = import.meta.env.VITE_API_KEY || 'securesmtp_live_secret_key';
+// while still supporting explicit VITE_API_BASE or VITE_API_URL for cross-origin deployments (e.g. Vercel -> Render).
+const rawBase = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || '';
+export const API_BASE = rawBase.replace(/\/+$/, '');
+export const API_KEY = import.meta.env.VITE_API_KEY || 'securesmtp_live_secret_key';
+
+export function getLiveWebSocketUrl() {
+  if (API_BASE) {
+    const wsBase = API_BASE.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
+    return `${wsBase}/ws/live?token=${encodeURIComponent(API_KEY)}`;
+  }
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}/ws/live?token=${encodeURIComponent(API_KEY)}`;
+}
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;

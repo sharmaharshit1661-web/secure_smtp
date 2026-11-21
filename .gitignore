@@ -16,6 +16,11 @@ ENV/
 *.swo
 .DS_Store
 
+# Archives and backups
+*.zip
+*.tar.gz
+Source Code/
+
 # Testing and Coverage
 .pytest_cache/
 .coverage
@@ -34,6 +39,8 @@ htmlcov/
 *.sqlite3
 /tmp/secure_smtp_*
 /tmp/securemailscope_*
+output/
+tmp/
 
 # Build / Egg metadata
 build/

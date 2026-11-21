@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
 import { dispatchCustomMail, getLiveStatus } from '../api/client';
@@ -78,7 +78,6 @@ export default function ClientDispatcher() {
   const [transcript, setTranscript] = useState([]);
   const [lastResult, setLastResult] = useState(null);
   const [error, setError] = useState(null);
-  const [liveStatus, setLiveStatus] = useState(null);
   const [continuousMode, setContinuousMode] = useState(false);
   const [showCliModal, setShowCliModal] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
@@ -89,7 +88,6 @@ export default function ClientDispatcher() {
   useEffect(() => {
     getLiveStatus()
       .then((data) => {
-        setLiveStatus(data);
         if (data?.lan_ip && (!serverHost || serverHost === 'localhost' || serverHost === '127.0.0.1')) {
           setServerHost(data.lan_ip);
         }
@@ -112,7 +110,7 @@ export default function ClientDispatcher() {
     }
   };
 
-  const handleTransmit = async (scenarioOverride) => {
+  const handleTransmit = useCallback(async (scenarioOverride) => {
     const scId = scenarioOverride || selectedScenario;
     const currentSc = SCENARIOS.find((s) => s.id === scId) || SCENARIOS[0];
 
@@ -158,7 +156,7 @@ export default function ClientDispatcher() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedScenario, serverHost, sender, recipient, subject, body, clientName]);
 
   useEffect(() => {
     if (continuousMode) {
@@ -178,7 +176,7 @@ export default function ClientDispatcher() {
     return () => {
       if (continuousTimerRef.current) clearInterval(continuousTimerRef.current);
     };
-  }, [continuousMode, serverHost, clientName, sender, recipient, subject, body]);
+  }, [continuousMode, handleTransmit]);
 
   const copyTranscriptToClipboard = () => {
     if (!transcript.length) return;

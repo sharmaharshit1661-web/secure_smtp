@@ -173,8 +173,8 @@ def get_mongo_client(uri: str | None = None) -> MongoClient:
         target_uri = uri or get_active_mongo_uri()
         _client = MongoClient(
             target_uri,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=5000,
+            serverSelectionTimeoutMS=15000,
+            connectTimeoutMS=10000,
             tz_aware=True,
         )
     return _client
@@ -253,8 +253,21 @@ def init_db_indexes() -> None:
 def drop_database() -> None:
     """Drop the database — use for testing / clean wipe."""
     client = get_mongo_client()
-    client.drop_database(DATABASE_NAME)
-    logger.info("MongoDB database '%s' dropped.", DATABASE_NAME)
+    try:
+        client.drop_database(DATABASE_NAME)
+        logger.info("MongoDB database '%s' dropped.", DATABASE_NAME)
+    except OperationFailure as e:
+        # Atlas cloud user accounts typically have readWrite rather than cluster-wide dropDatabase permissions.
+        # Fall back to wiping all collection documents cleanly.
+        logger.info("dropDatabase not permitted on cloud cluster (%s); clearing collections directly.", e)
+        db = client[DATABASE_NAME]
+        for col in db.list_collection_names():
+            if not col.startswith("system."):
+                try:
+                    db[col].delete_many({})
+                except Exception as clear_err:
+                    logger.debug("Could not clear collection %s: %s", col, clear_err)
+        logger.info("MongoDB collections in '%s' wiped clean.", DATABASE_NAME)
 
 
 def serialize_doc(doc: dict[str, Any] | None) -> dict[str, Any] | None:

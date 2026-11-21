@@ -26,7 +26,15 @@ else
     echo "⚠️ No virtual environment found. Using system python3."
 fi
 
-# 2. Configure Database & API Authentication Credentials
+# 2. Load Environment Configuration (.env) if present
+if [ -f ".env" ]; then
+    echo "✓ Loading configuration from .env..."
+    set -a
+    source .env
+    set +a
+fi
+
+# Configure Database & API Authentication Credentials
 export SECURE_SMTP_API_KEY="${SECURE_SMTP_API_KEY:-securesmtp_live_secret_key}"
 export SECURE_SMTP_MONGO_USER="${SECURE_SMTP_MONGO_USER:-secure_admin}"
 export SECURE_SMTP_MONGO_PASSWORD="${SECURE_SMTP_MONGO_PASSWORD:-secure_smtp_live_db_key_2026}"
@@ -37,10 +45,11 @@ export SECURE_SMTP_MONGO_AUTH_MECHANISM="${SECURE_SMTP_MONGO_AUTH_MECHANISM:-SCR
 echo "✓ Checking demo database (MongoDB)..."
 PYTHONPATH=src python scripts/seed_demo_data.py
 
-# 3. Clean up existing processes on ports 8000 and 5173 if any
+# 3. Clean up existing processes on ports 8000, 5173, and mail lab ports (2525-2528) if any
 echo "✓ Checking ports..."
 lsof -ti:8000 | xargs kill -9 2>/dev/null || true
 lsof -ti:5173 | xargs kill -9 2>/dev/null || true
+lsof -ti:2525,2526,2527,2528 | xargs kill -9 2>/dev/null || true
 
 # 4. Start FastAPI Backend
 echo "✓ Starting FastAPI backend on http://localhost:8000..."

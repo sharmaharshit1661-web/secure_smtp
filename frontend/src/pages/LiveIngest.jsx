@@ -5,6 +5,7 @@ import {
   getReportUrl,
   getLiveStatus,
   clearLiveHistory,
+  getLiveWebSocketUrl,
 } from '../api/client';
 import { formatBytes } from '../utils/format';
 import Icon from '../components/Icon';
@@ -32,8 +33,7 @@ export default function LiveIngest() {
       .then(setLabStatus)
       .catch(() => {});
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/live`;
+    const wsUrl = getLiveWebSocketUrl();
     let ws;
     let timer;
 

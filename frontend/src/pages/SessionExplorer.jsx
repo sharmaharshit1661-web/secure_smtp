@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
@@ -59,7 +59,7 @@ export default function SessionExplorer() {
     setCopilotAnswer(null);
   }, [selectedSessionId]);
 
-  const handleFetchRemediation = async (type = serverType) => {
+  const handleFetchRemediation = useCallback(async (type = serverType) => {
     if (!selectedSessionId) return;
     setRemediationLoading(true);
     try {
@@ -70,9 +70,9 @@ export default function SessionExplorer() {
     } finally {
       setRemediationLoading(false);
     }
-  };
+  }, [selectedSessionId, serverType]);
 
-  const handleFetchBriefing = async () => {
+  const handleFetchBriefing = useCallback(async () => {
     if (!selectedSessionId) return;
     setBriefingLoading(true);
     try {
@@ -83,7 +83,7 @@ export default function SessionExplorer() {
     } finally {
       setBriefingLoading(false);
     }
-  };
+  }, [selectedSessionId]);
 
   const handleAskCopilot = async (queryText) => {
     const q = queryText || copilotQuery;
@@ -109,7 +109,7 @@ export default function SessionExplorer() {
         handleFetchBriefing();
       }
     }
-  }, [activeTab, selectedSessionId]);
+  }, [activeTab, selectedSessionId, remediationData, briefingData, serverType, handleFetchRemediation, handleFetchBriefing]);
 
   // Fetch host list
   useEffect(() => {

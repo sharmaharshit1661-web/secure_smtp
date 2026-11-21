@@ -15,7 +15,7 @@
   FINISH: unreviewed and undocumented is unfinished.
 */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Logo from '../components/Logo';
 import Icon from '../components/Icon';
@@ -25,16 +25,19 @@ import { useAuth } from '../context/AuthContext';
 function useInView(opts = {}) {
   const ref = useRef(null);
   const [visible, setVisible] = useState(false);
+  const threshold = opts.threshold ?? 0.12;
+  const rootMargin = opts.rootMargin;
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const obs = new IntersectionObserver(
       ([e]) => { if (e.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { threshold: 0.12, ...opts }
+      { threshold, rootMargin }
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [threshold, rootMargin]);
   return [ref, visible];
 }
 

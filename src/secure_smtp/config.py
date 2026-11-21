@@ -12,7 +12,7 @@ import re
 import urllib.parse
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -35,6 +35,33 @@ class Settings(BaseSettings):
     app_name: str = Field(default="Secure SMTP", description="Application display name")
     app_version: str = Field(default="0.1.0", description="Application semantic version")
     debug: bool = Field(default=False, description="Debug mode")
+    environment: str = Field(
+        default="development",
+        validation_alias=AliasChoices("SECURE_SMTP_ENV", "ENVIRONMENT", "ENV"),
+        description="Application runtime environment: development, testing, staging, production",
+    )
+    enable_live_lab: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("SECURE_SMTP_ENABLE_LIVE_LAB", "ENABLE_LIVE_LAB"),
+        description="Whether to auto-start in-process live mail simulation lab on ports 2525-2528",
+    )
+
+    # ── Rate Limiting & Safety Quotas ──
+    max_upload_size_mb: int = Field(
+        default=100,
+        validation_alias=AliasChoices("SECURE_SMTP_MAX_UPLOAD_SIZE_MB", "MAX_UPLOAD_SIZE_MB"),
+        description="Maximum allowable PCAP upload size in MB",
+    )
+    rate_limit_enabled: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("SECURE_SMTP_RATE_LIMIT_ENABLED", "RATE_LIMIT_ENABLED"),
+        description="Whether API rate limiting is enforced on sensitive endpoints",
+    )
+    rate_limit_rpm: int = Field(
+        default=120,
+        validation_alias=AliasChoices("SECURE_SMTP_RATE_LIMIT_RPM", "RATE_LIMIT_RPM"),
+        description="Default requests per minute limit per client IP",
+    )
 
     # ── API Authentication ──
     api_key: str = Field(
@@ -76,7 +103,7 @@ class Settings(BaseSettings):
     )
 
     # ── CORS Settings ──
-    cors_origins: List[str] = Field(
+    cors_origins: Union[List[str], str] = Field(
         default_factory=lambda: [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
@@ -88,7 +115,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SECURE_SMTP_CORS_ORIGINS", "CORS_ORIGINS"),
         description="Allowed CORS origin URLs",
     )
-    cors_headers: List[str] = Field(
+    cors_headers: Union[List[str], str] = Field(
         default_factory=lambda: ["*"],
         validation_alias=AliasChoices("SECURE_SMTP_CORS_HEADERS", "CORS_HEADERS"),
         description="Allowed CORS request headers",
@@ -166,13 +193,41 @@ class Settings(BaseSettings):
 
     # ── Derived Connection Helpers ──
 
+    @staticmethod
+    def _normalize_mongo_uri(raw_uri: str) -> str:
+        """
+        Ensure username and password within an explicit connection URI
+        are properly RFC 3986 percent-encoded if they contain special characters (like #, @, spaces).
+        """
+        raw = raw_uri.strip()
+        try:
+            from pymongo.uri_parser import parse_uri
+            parse_uri(raw)
+            return raw
+        except Exception:
+            pass
+
+        # Match mongodb(+srv)://<user>:<password>@<host>/<rest>
+        m = re.match(r"^(mongodb(?:\+srv)?://)([^:]+):(.+)@([^/@]+)(/.*)?$", raw)
+        if m:
+            scheme, user, raw_pwd, host, rest = m.groups()
+            raw_pwd = raw_pwd.strip()
+            host = host.strip()
+            rest = rest or "/secure_smtp?retryWrites=true&w=majority"
+            if not rest.startswith("/"):
+                rest = "/" + rest
+            encoded_user = urllib.parse.quote_plus(urllib.parse.unquote_plus(user))
+            encoded_pwd = urllib.parse.quote_plus(urllib.parse.unquote_plus(raw_pwd))
+            return f"{scheme}{encoded_user}:{encoded_pwd}@{host}{rest}"
+        return raw
+
     def get_mongo_connection_uri(self) -> str:
         """
         Build a well-formed MongoDB connection URI, safely percent-encoding
         special characters in usernames and passwords.
         """
         if self.mongo_uri and self.mongo_uri.strip():
-            return self.mongo_uri.strip()
+            return self._normalize_mongo_uri(self.mongo_uri)
 
         if self.mongo_user and self.mongo_password:
             user_enc = urllib.parse.quote_plus(self.mongo_user)
@@ -198,6 +253,11 @@ class Settings(BaseSettings):
         """Return the connection URI with the password component safely redacted."""
         uri = self.get_mongo_connection_uri()
         return re.sub(r":([^/@]+)@", r":******@", uri)
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in a strict production environment."""
+        return self.environment.lower() in ("production", "prod")
 
 
 @lru_cache()

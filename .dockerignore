@@ -1,0 +1,42 @@
+# Version Control & Local Environment
+.git
+.gitignore
+.venv
+venv
+env
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+
+# Python Artifacts & Caches
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.egg-info
+dist/
+build/
+tests/
+
+# Node & Frontend Build Artifacts
+node_modules
+frontend/node_modules
+frontend/dist
+.npm
+
+# Temporary Data, Uploads & Captures
+tmp/
+output/
+*.zip
+*.pcap
+*.pcapng
+*.log
+Source Code*

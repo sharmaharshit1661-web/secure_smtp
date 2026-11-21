@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { SignUp } from '@clerk/clerk-react';
 import Logo from '../components/Logo';
 import Icon from '../components/Icon';
@@ -7,7 +7,6 @@ import { clerkAppearance } from '../config/clerkAppearance';
 import { useAuth } from '../context/AuthContext';
 
 export default function SignUpPage() {
-  const nav = useNavigate();
   const isKeyConfigured = Boolean(
     import.meta.env.VITE_CLERK_PUBLISHABLE_KEY &&
     !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY.includes('YOUR_KEY')

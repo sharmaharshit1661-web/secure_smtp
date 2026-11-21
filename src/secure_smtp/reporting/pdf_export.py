@@ -215,7 +215,16 @@ def generate_pdf_report(
             except Exception as e:
                 logger.warning("Could not read report.json for PDF export: %s", e)
 
-    # 1. Try WeasyPrint if available and functional
+    # 1. Prefer ReportLab if report_data is available (fast, pure-Python, zero C-library segfaults)
+    if report_data is not None:
+        try:
+            _generate_pdf_reportlab(output, report_data)
+            logger.info("Generated PDF report with ReportLab: %s", output)
+            return str(output)
+        except Exception as e:
+            logger.warning("ReportLab PDF generation failed: %s; trying WeasyPrint", e)
+
+    # 2. Try WeasyPrint if available and functional
     try:
         from weasyprint import HTML
 
@@ -224,15 +233,7 @@ def generate_pdf_report(
         logger.info("Generated PDF report with WeasyPrint: %s", output)
         return str(output)
     except Exception as e:
-        logger.info("WeasyPrint not used (%s), using ReportLab generator", e)
-
-    # 2. Try ReportLab with report_data
-    if report_data is not None:
-        try:
-            _generate_pdf_reportlab(output, report_data)
-            return str(output)
-        except Exception as e:
-            logger.error("ReportLab PDF generation error: %s", e)
+        logger.info("WeasyPrint not used (%s), using ReportLab fallback", e)
 
     # 3. Safe fallback
     try:
