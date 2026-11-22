@@ -233,6 +233,10 @@ def init_db_indexes() -> None:
     """Initialize performance and uniqueness indexes on collections."""
     try:
         hosts = get_hosts_col()
+        try:
+            hosts.drop_index("ip_or_hostname_1")
+        except Exception:
+            pass
         hosts.create_index([("org_id", ASCENDING), ("ip_or_hostname", ASCENDING)], unique=True)
         hosts.create_index([("id", ASCENDING)], unique=True)
         hosts.create_index([("aggregate_risk_score", DESCENDING)])

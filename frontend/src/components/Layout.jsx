@@ -133,27 +133,7 @@ export default function Layout() {
 
             <ThemeToggle />
             {/* Authentication Header Controls */}
-            {isClerkEnabled ? (
-              <div className="flex items-center gap-2">
-                <Show when="signed-in">
-                  <OrganizationSwitcher hidePersonal />
-                  <UserButton />
-                </Show>
-                <Show when="signed-out">
-                  <Link
-                    to="/sign-in"
-                    className="btn btn-primary btn-sm"
-                    style={{
-                      padding: '5px 14px',
-                      fontSize: '12px',
-                      borderRadius: 'var(--radius-pill)',
-                    }}
-                  >
-                    Sign In
-                  </Link>
-                </Show>
-              </div>
-            ) : user ? (
+            {user ? (
               <div className="flex items-center gap-2">
                 <div style={{
                   display: 'flex',
@@ -185,7 +165,7 @@ export default function Layout() {
                       {user.name || 'Operator'}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
-                      {isClerkEnabled ? 'Signed in' : 'Local account'}
+                      {user.role || 'Operator'}
                     </span>
                   </div>
                 </div>
@@ -203,6 +183,26 @@ export default function Layout() {
                 >
                   Sign Out
                 </button>
+              </div>
+            ) : isClerkEnabled ? (
+              <div className="flex items-center gap-2">
+                <Show when="signed-in">
+                  <OrganizationSwitcher hidePersonal />
+                  <UserButton />
+                </Show>
+                <Show when="signed-out">
+                  <Link
+                    to="/sign-in"
+                    className="btn btn-primary btn-sm"
+                    style={{
+                      padding: '5px 14px',
+                      fontSize: '12px',
+                      borderRadius: 'var(--radius-pill)',
+                    }}
+                  >
+                    Sign In
+                  </Link>
+                </Show>
               </div>
             ) : (
               <Link

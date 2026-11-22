@@ -13,6 +13,8 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
+from pymongo.errors import DuplicateKeyError
+
 from secure_smtp.config import get_settings
 from secure_smtp.db.models import (
     Certificate,
@@ -261,7 +263,12 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
 
             # Find or create Host in MongoDB
             host_doc = hosts_col.find_one(
-                {"ip_or_hostname": reassembled.server_ip, "org_id": org_id}
+                {
+                    "$or": [
+                        {"ip_or_hostname": reassembled.server_ip, "org_id": org_id},
+                        {"ip_or_hostname": reassembled.server_ip},
+                    ]
+                }
             )
             if not host_doc:
                 host_id = get_next_sequence("host_id")
@@ -273,9 +280,15 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                     "session_count": 0,
                     "aggregate_risk_score": 0.0,
                 }
-                hosts_col.insert_one(host_data)
+                try:
+                    hosts_col.insert_one(host_data)
+                except DuplicateKeyError:
+                    host_doc = hosts_col.find_one({"ip_or_hostname": reassembled.server_ip})
+                    host_id = host_doc["id"] if host_doc else host_id
             else:
                 host_id = host_doc["id"]
+                if not host_doc.get("org_id"):
+                    hosts_col.update_one({"_id": host_doc["_id"]}, {"$set": {"org_id": org_id}})
 
             session_id = get_next_sequence("session_id")
 
@@ -375,7 +388,7 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                 published=False,
                 run_id=run_id,
                 org_id=org_id,
-                owner_id=job["owner_id"],
+                owner_id=job.get("owner_id", "system"),
                 job_id=job_id,
                 source_kind=job.get("source_kind", "manual_capture"),
             )
