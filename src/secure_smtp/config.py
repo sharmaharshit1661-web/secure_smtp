@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=(".env", ".env.clerk-local"),
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -54,7 +54,22 @@ class Settings(BaseSettings):
     )
 
     auth_provider: Literal["clerk", "keycloak", "mongodb", "native"] = Field(
-        default="clerk", validation_alias="SECURE_SMTP_AUTH_PROVIDER"
+        default="mongodb", validation_alias="SECURE_SMTP_AUTH_PROVIDER"
+    )
+    local_admin_email: str = Field(
+        default="", validation_alias=AliasChoices("SECURE_SMTP_LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_EMAIL")
+    )
+    local_password_hash: str = Field(
+        default="", validation_alias=AliasChoices("SECURE_SMTP_LOCAL_PASSWORD_HASH", "LOCAL_PASSWORD_HASH")
+    )
+    rate_limit_enabled: bool = Field(
+        default=True, validation_alias=AliasChoices("SECURE_SMTP_RATE_LIMIT_ENABLED", "RATE_LIMIT_ENABLED")
+    )
+    rate_limit_rpm: int = Field(
+        default=120, validation_alias=AliasChoices("SECURE_SMTP_RATE_LIMIT_RPM", "RATE_LIMIT_RPM")
+    )
+    max_upload_size_mb: int = Field(
+        default=100, validation_alias=AliasChoices("SECURE_SMTP_MAX_UPLOAD_SIZE_MB", "MAX_UPLOAD_SIZE_MB")
     )
     offline_issuer: str = Field(default="", validation_alias="SECURE_SMTP_OFFLINE_ISSUER")
     offline_jwks_url: str = Field(default="", validation_alias="SECURE_SMTP_OFFLINE_JWKS_URL")

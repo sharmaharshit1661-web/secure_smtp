@@ -117,15 +117,46 @@ def login(body: LoginRequest):
     """Sign in using MongoDB credentials and receive a signed JWT access token."""
     db = get_database()
     email_clean = body.email.strip().lower()
+    settings = get_settings()
 
     user = db.users.find_one({"email": email_clean})
-    if not user or not verify_password(body.password, user.get("password_hash", "")):
+    if not user:
+        if (
+            settings.local_admin_email
+            and email_clean == settings.local_admin_email.lower()
+            and settings.local_password_hash
+            and verify_password(body.password, settings.local_password_hash)
+        ):
+            user_id = "usr_local_admin"
+            org_id = settings.pilot_org_id or "pilot"
+            role = "admin"
+            token = create_access_token(
+                user_id=user_id,
+                email=email_clean,
+                role=role,
+                org_id=org_id,
+            )
+            return AuthResponse(
+                token=token,
+                user=UserResponse(
+                    user_id=user_id,
+                    name="Local System Operator",
+                    email=email_clean,
+                    role=role,
+                    org_id=org_id,
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
 
-    settings = get_settings()
+    if not verify_password(body.password, user.get("password_hash", "")):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password",
+        )
+
     user_id = user["user_id"]
     org_id = user.get("org_id") or settings.pilot_org_id or f"org_{user_id}"
     role = user.get("role", "admin")

@@ -36,6 +36,14 @@ def hash_password(password: str) -> str:
 
 def verify_password(password: str, stored_hash: str) -> bool:
     try:
+        if stored_hash.startswith("pbkdf2_sha256$"):
+            parts = stored_hash.split("$")
+            if len(parts) == 4:
+                _, iters_str, salt, key_hex = parts
+                expected = hashlib.pbkdf2_hmac(
+                    "sha256", password.encode("utf-8"), salt.encode("utf-8"), int(iters_str)
+                )
+                return secrets.compare_digest(expected.hex(), key_hex)
         salt, key_hex = stored_hash.split(":", 1)
         expected = hashlib.pbkdf2_hmac(
             "sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000

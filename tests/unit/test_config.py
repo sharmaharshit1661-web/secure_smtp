@@ -11,7 +11,7 @@ from secure_smtp.config import Settings
 
 def test_default_settings():
     """Verify default settings initialization."""
-    settings = Settings()
+    settings = Settings(_env_file=None)
     assert settings.app_name == "Secure SMTP"
     assert settings.app_version == "0.1.0"
     assert settings.api_key == ""
@@ -29,7 +29,9 @@ def test_default_settings():
 
 def test_cors_origins_comma_separated_parsing():
     """Verify comma-separated string is parsed into a list."""
-    settings = Settings(cors_origins="https://app.securesmtp.io, https://console.securesmtp.io")
+    settings = Settings(
+        cors_origins="https://app.securesmtp.io, https://console.securesmtp.io", _env_file=None
+    )
     assert settings.cors_origins == [
         "https://app.securesmtp.io",
         "https://console.securesmtp.io",
@@ -38,7 +40,7 @@ def test_cors_origins_comma_separated_parsing():
 
 def test_cors_headers_comma_separated_parsing():
     """Verify comma-separated headers are parsed into a list."""
-    settings = Settings(cors_headers="X-API-Key, Authorization, Content-Type")
+    settings = Settings(cors_headers="X-API-Key, Authorization, Content-Type", _env_file=None)
     assert settings.cors_headers == ["X-API-Key", "Authorization", "Content-Type"]
 
 
@@ -50,6 +52,8 @@ def test_mongo_uri_assembly_unauthenticated():
         mongo_host="10.0.0.5",
         mongo_port=27018,
         mongo_db="audit_logs",
+        mongo_uri=None,
+        _env_file=None,
     )
     assert settings.get_mongo_connection_uri() == "mongodb://10.0.0.5:27018/audit_logs"
 
@@ -64,6 +68,8 @@ def test_mongo_uri_assembly_authenticated():
         mongo_db="secure_smtp",
         mongo_auth_db="admin",
         mongo_auth_mechanism="SCRAM-SHA-256",
+        mongo_uri=None,
+        _env_file=None,
     )
     uri = settings.get_mongo_connection_uri()
     assert "mongodb://app_user:p%40ss%3Aw%2Ford%3F%21@db.internal:27017/secure_smtp" in uri
