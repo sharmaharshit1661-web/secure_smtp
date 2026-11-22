@@ -161,7 +161,7 @@ def verify_token(token: str) -> Principal:
         and (getattr(settings, "public_registration", False) or settings.pilot_org_id)
         and settings.clerk_authorized_parties
     ):
-        raise HTTPException(503, "Verified sign-in is not configured")
+        raise HTTPException(401, "Invalid or expired session", headers={"WWW-Authenticate": "Bearer"})
     try:
         key = jwks_client(settings.clerk_issuer).get_signing_key_from_jwt(token).key
         claims = jwt.decode(
