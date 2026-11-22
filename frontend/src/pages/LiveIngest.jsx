@@ -61,7 +61,11 @@ export default function LiveIngest() {
     try { saved = localStorage.getItem('sms_latest_job_id'); } catch { return; }
     if (saved) getAnalysisStatus(saved, { signal: controller.signal }).then(job => {
       if (!controller.signal.aborted && job.status === 'done') setResultJobId(saved);
-    }).catch(() => {});
+    }).catch((err) => {
+      if (err?.status === 404) {
+        try { localStorage.removeItem('sms_latest_job_id'); } catch { /* noop */ }
+      }
+    });
     return () => controller.abort();
   }, []);
   const [showRemoteGuide, setShowRemoteGuide] = useState(false);
@@ -140,6 +144,23 @@ export default function LiveIngest() {
     setSuccessMsg(null);
     setSelectedFile(validation ? null : file);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const loadSampleCapture = async (filename) => {
+    if (uploading) return;
+    setError(null);
+    setSuccessMsg(null);
+    setUploadProgress(`Loading ${filename}…`);
+    try {
+      const res = await fetch(`/pcaps/${filename}`);
+      if (!res.ok) throw new Error(`Could not fetch sample ${filename}`);
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: 'application/vnd.tcpdump.pcap' });
+      selectCapture(file);
+      setUploadProgress('');
+    } catch (err) {
+      setError(err.message || 'Failed to load sample capture');
+      setUploadProgress('');
+    }
   };
   const handleFileDrop = (event) => {
     event.preventDefault();
@@ -287,11 +308,63 @@ export default function LiveIngest() {
         <section className="card simple-stack">
           <h2>Upload capture</h2>
           <input type="file" ref={fileInputRef} hidden accept=".pcap,.pcapng" aria-label="Choose packet capture" disabled={uploading} onChange={handleFileSelect} />
-          {!selectedFile ? <button
-            type="button" className={`ingest-dropzone ${dragOver ? 'drag-over' : ''}`} disabled={uploading}
-            onDragOver={event => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)}
-            onDrop={handleFileDrop} onClick={() => fileInputRef.current?.click()}
-          ><Icon name="upload" size={24} /><strong>Drop a capture or browse</strong><span className="text-secondary text-sm">PCAP or PCAPNG · up to 25 MB</span></button> : <div className="simple-stack">
+          {!selectedFile ? (
+            <div className="simple-stack">
+              <button
+                type="button" className={`ingest-dropzone ${dragOver ? 'drag-over' : ''}`} disabled={uploading}
+                onDragOver={event => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)}
+                onDrop={handleFileDrop} onClick={() => fileInputRef.current?.click()}
+              >
+                <Icon name="upload" size={24} />
+                <strong>Drop a capture or browse</strong>
+                <span className="text-secondary text-sm">PCAP or PCAPNG · up to 25 MB</span>
+              </button>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '6px' }}>
+                <span className="text-secondary text-xs" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Quick Demo · 1-Click Sample Captures:
+                </span>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 9px' }}
+                    disabled={uploading}
+                    onClick={() => loadSampleCapture('demo_composite.pcap')}
+                  >
+                    ⚡ Full Enterprise Fleet
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 9px' }}
+                    disabled={uploading}
+                    onClick={() => loadSampleCapture('smtp_tls10_rc4.pcap')}
+                  >
+                    ⚠️ Weak Cipher (RC4)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 9px' }}
+                    disabled={uploading}
+                    onClick={() => loadSampleCapture('smtp_expired_cert.pcap')}
+                  >
+                    🚨 Expired Certificate
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 9px' }}
+                    disabled={uploading}
+                    onClick={() => loadSampleCapture('smtp_tls13_good.pcap')}
+                  >
+                    ✅ Modern TLS 1.3
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : <div className="simple-stack">
             <div className="simple-row"><div className="capture-filename"><strong>{selectedFile.name}</strong><small>{formatBytes(selectedFile.size)}</small></div><button className="btn btn-outline" disabled={uploading} onClick={() => setSelectedFile(null)}>Remove</button></div>
             <button className="btn btn-primary" disabled={uploading} onClick={handleUpload}>{uploading ? 'Analyzing…' : 'Analyze capture'}</button>
           </div>}

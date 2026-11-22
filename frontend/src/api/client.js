@@ -3,18 +3,26 @@ import { errorMessage, fetchWithDeadline } from './transport.js';
  * Fetch wrapper for the Secure SMTP FastAPI backend.
  */
 
-// Default to empty string so local Vite dev proxy (/api -> :8000) is leveraged seamlessly without CORS hurdles,
-// while still supporting explicit VITE_API_BASE for cross-origin deployments.
-const API_BASE = import.meta.env?.VITE_API_BASE ?? '';
+// Production backend on Render
+const PROD_BACKEND_URL = 'https://secure-smtp-1.onrender.com';
+const isVercelHost = typeof window !== 'undefined' && window.location.hostname.endsWith('vercel.app');
+
+// In production on Vercel, connect directly to Render for maximum reliability & zero CORS latency.
+// On local dev, default to empty string so local Vite dev proxy (/api -> :8000) is leveraged.
+const API_BASE = import.meta.env?.VITE_API_BASE || (isVercelHost ? PROD_BACKEND_URL : '');
 let tokenProvider = null;
 export function configureTokenProvider(provider) { tokenProvider = provider; }
 export async function getAccessToken() {
-  const token = await tokenProvider?.();
+  let token = await tokenProvider?.();
+  if (!token) {
+    try { token = localStorage.getItem('secure_smtp_token'); } catch { /* noop */ }
+  }
   if (!token) throw new Error('Sign in to continue.');
   return token;
 }
 export function getLiveSocketUrl() {
-  const url = new URL(API_BASE || window.location.origin, window.location.origin);
+  const base = isVercelHost ? PROD_BACKEND_URL : (API_BASE || window.location.origin);
+  const url = new URL(base, window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   url.pathname = '/ws/live';
   return url.toString();
