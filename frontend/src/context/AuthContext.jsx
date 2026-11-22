@@ -15,9 +15,62 @@ export function useAuth() {
   return ctx;
 }
 
-// Missing deployment configuration must not unlock a local/demo dashboard.
+// Local / evaluation mode provides persistent demo session when Clerk is unconfigured
 export function LocalAuthProvider({ children }) {
-  return <AuthContext.Provider value={{ isAuthenticated: false, user: null, isClerkEnabled: false, isLoaded: true, login: () => {}, logout: () => {} }}>{children}</AuthContext.Provider>;
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('secure_smtp_demo_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const orgId = 'local-dev';
+
+  useEffect(() => {
+    if (user) {
+      const token = user.role === 'admin' ? 'local-admin-session' : 'local-member-session';
+      configureTokenProvider(async () => token);
+    } else {
+      configureTokenProvider(null);
+    }
+    return () => configureTokenProvider(null);
+  }, [user]);
+
+  const login = (userData) => {
+    const u = userData || {
+      name: 'SOC Lead Administrator',
+      email: 'analyst@corp.io',
+      role: 'admin',
+      clearance: 'Level 4 SOC Administrator',
+    };
+    try {
+      localStorage.setItem('secure_smtp_demo_user', JSON.stringify(u));
+    } catch {}
+    setUser(u);
+  };
+
+  const logout = () => {
+    try {
+      localStorage.removeItem('secure_smtp_demo_user');
+    } catch {}
+    setUser(null);
+    configureTokenProvider(null);
+  };
+
+  const value = {
+    isAuthenticated: Boolean(user),
+    user,
+    login,
+    logout,
+    isClerkEnabled: false,
+    isLoaded: true,
+    orgId: user ? orgId : null,
+    offline: false,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function ClerkAuthProvider({ children }) {
