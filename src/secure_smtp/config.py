@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     clerk_issuer: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_ISSUER")
     clerk_audience: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_AUDIENCE")
-    clerk_authorized_parties: list[str] = Field(default_factory=list, validation_alias="SECURE_SMTP_CLERK_AUTHORIZED_PARTIES")
+    clerk_authorized_parties: list[str] | str = Field(default_factory=list, validation_alias="SECURE_SMTP_CLERK_AUTHORIZED_PARTIES")
     public_registration: bool = Field(default=True, validation_alias="SECURE_SMTP_PUBLIC_REGISTRATION")
     pilot_org_id: str = Field(default="", validation_alias="SECURE_SMTP_PILOT_ORG_ID")
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024, validation_alias="SECURE_SMTP_MAX_UPLOAD_BYTES")
@@ -102,7 +102,7 @@ class Settings(BaseSettings):
     )
 
     # ── CORS Settings ──
-    cors_origins: list[str] = Field(
+    cors_origins: list[str] | str = Field(
         default_factory=lambda: [
             "http://localhost:5173",
             "http://127.0.0.1:5173",
@@ -114,7 +114,7 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("SECURE_SMTP_CORS_ORIGINS", "CORS_ORIGINS"),
         description="Allowed CORS origin URLs",
     )
-    cors_headers: list[str] = Field(
+    cors_headers: list[str] | str = Field(
         default_factory=lambda: ["*"],
         validation_alias=AliasChoices("SECURE_SMTP_CORS_HEADERS", "CORS_HEADERS"),
         description="Allowed CORS request headers",
@@ -123,8 +123,22 @@ class Settings(BaseSettings):
     @field_validator("cors_origins", "cors_headers", "clerk_authorized_parties", mode="before")
     @classmethod
     def parse_comma_separated_list(cls, v):
+        import json
         if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return []
+            if v.startswith("[") and v.endswith("]"):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(item).strip() for item in parsed if str(item).strip()]
+                except Exception:
+                    inner = v[1:-1].strip()
+                    return [item.strip().strip("\"'") for item in inner.split(",") if item.strip().strip("\"'")]
             return [item.strip() for item in v.split(",") if item.strip()]
+        if isinstance(v, list):
+            return [str(item).strip() for item in v if str(item).strip()]
         return v
 
     # ── Storage & Directories ──
