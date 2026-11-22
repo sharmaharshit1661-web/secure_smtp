@@ -69,3 +69,4 @@ PRODUCTION_READY.md
 
 # Clerk CLI local application/claim state
 .clerk/
+backups/
