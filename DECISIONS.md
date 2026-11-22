@@ -14,7 +14,3 @@ Key architecture and implementation decisions made for the Secure SMTP platform:
 | 8 | **Comprehensive Compliance Mapping** | Mapped rulebook to NIST SP 800-52r2, PCI-DSS v4.0, and RFC 8996 standards. |
 | 9 | **Worst-Session Weighting for Host Rollup** | Surfaces genuine high-risk infrastructure threats without being diluted by high volumes of benign sessions. |
 | 10 | **Multi-Engine PDF Generation (ReportLab First)** | Fast, pure-Python PDF synthesis avoiding native C-library dlopen crashes on macOS while delivering boardroom-ready audit dossiers. |
-| 11 | **Sliding-Window In-Memory Rate Limiting** | Thread-safe, memory-bounded sliding window rate limiter enforcing per-route and per-client quotas with standard 429 Retry-After headers without external Redis dependency. |
-| 12 | **PCAP Streaming & Magic Byte Pre-Flight Validation** | Streams uploads to disk in 64KB chunks up to a configurable ceiling (100MB) while verifying PCAP/PCAPNG magic signature bytes before job submission. |
-| 13 | **Defensive Security Headers & End-to-End Tracing** | Automatically injects `X-Request-ID` tracing alongside `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, and `Permissions-Policy`. |
-| 14 | **Production Fail-Fast Secret Enforcement** | Fast startup verification refusing to boot in production (`SECURE_SMTP_ENV=production`) if default development secrets are detected. |

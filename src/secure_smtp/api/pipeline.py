@@ -104,7 +104,7 @@ def build_report_data(hosts: list[dict], sessions: list[dict]) -> dict:
                     "key_length_bits": c.get("key_length_bits"),
                     "signature_algorithm": c.get("signature_algorithm"),
                     "self_signed": c.get("self_signed", False),
-                    "chain_valid": c.get("chain_valid", True),
+                    "chain_valid": c.get("chain_valid"),
                 }
                 for c in certificates
             ],
@@ -147,16 +147,21 @@ def generate_job_reports(job_id: str) -> None:
     hosts_col = get_hosts_col()
     sessions_col = get_sessions_col()
 
-    sessions = list(sessions_col.find({"job_id": job_id}, {"_id": 0}))
-    host_ids = list({s["host_id"] for s in sessions if s.get("host_id") is not None})
-    hosts = list(hosts_col.find({"id": {"$in": host_ids}}, {"_id": 0}))
+    job = get_jobs_col().find_one({"job_id": job_id})
+    if not job or not job.get("org_id"):
+        raise ValueError("Assessment ownership is missing")
+    sessions = list(sessions_col.find({"org_id": job["org_id"], "job_id": job_id}, {"_id": 0}))
+    # Report host counts and scores describe this assessment, never the cumulative fleet.
     from secure_smtp.ai.risk_model import compute_host_rollup
-    for host in hosts:
-        selected = [s for s in sessions if s.get("host_id") == host["id"]]
-        host["session_count"] = len(selected)
-        host["aggregate_risk_score"] = compute_host_rollup([
-            RiskScore(**s["risk_score"]) for s in selected if s.get("risk_score")
-        ])
+    hosts = []
+    for host_id in {s["host_id"] for s in sessions}:
+        records = [s for s in sessions if s["host_id"] == host_id]
+        host = hosts_col.find_one({"id": host_id, "org_id": job["org_id"]}, {"_id": 0})
+        if not host:
+            raise ValueError("Assessment host is missing")
+        host["session_count"] = len(records)
+        host["aggregate_risk_score"] = compute_host_rollup([RiskScore(**s["risk_score"]) for s in records if s.get("risk_score")])
+        hosts.append(host)
 
     report_data = build_report_data(hosts, sessions)
 
@@ -183,7 +188,7 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
     from secure_smtp.ai.anomaly_model import AnomalyDetector
     from secure_smtp.ai.explain import enrich_risk_score_with_explanation
     from secure_smtp.ai.features import build_feature_vector
-    from secure_smtp.ai.risk_model import RiskModel, compute_host_rollup
+    from secure_smtp.ai.risk_model import RiskModel
     from secure_smtp.ingest.pcap_reader import read_pcap
     from secure_smtp.ingest.protocol_id import identify_protocol
     from secure_smtp.ingest.tcp_stream import reassemble_stream
@@ -196,10 +201,19 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
     hosts_col = get_hosts_col()
     sessions_col = get_sessions_col()
 
-    try:
-        # Update job status
-        jobs_col.update_one({"job_id": job_id}, {"$set": {"status": "running"}})
+    job = jobs_col.find_one({"job_id": job_id})
+    if not job or not job.get("org_id"):
+        raise ValueError("Assessment ownership is missing")
+    org_id = job["org_id"]
+    from uuid import uuid4
+    run_id = str(uuid4())
+    lease = {"job_id": job_id, "run_id": run_id, "status": "running"}
+    claimed = jobs_col.update_one({"job_id": job_id, "status": "queued"},
+                                  {"$set": {"status": "running", "run_id": run_id}})
+    if not claimed.modified_count:
+        raise RuntimeError("Assessment is no longer queued")
 
+    try:
         # Stage 1: Read PCAP and group into streams
         packet_streams = read_pcap(pcap_path)
         logger.info("Job %s: Read %d streams from PCAP", job_id, len(packet_streams))
@@ -214,6 +228,8 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
         created_session_ids = []
 
         for stream in packet_streams:
+            if not jobs_col.find_one(lease):
+                raise RuntimeError("Assessment lease expired")
             # Stage 1: TCP reassembly
             reassembled = reassemble_stream(stream)
 
@@ -229,12 +245,14 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                 continue
 
             # Find or create Host in MongoDB
-            host_doc = hosts_col.find_one({"ip_or_hostname": reassembled.server_ip})
+            host_doc = hosts_col.find_one({"ip_or_hostname": reassembled.server_ip, "org_id": org_id})
             if not host_doc:
                 host_id = get_next_sequence("host_id")
                 host_data = {
                     "id": host_id,
+                    "org_id": org_id,
                     "ip_or_hostname": reassembled.server_ip,
+                    "published": False,
                     "session_count": 0,
                     "aggregate_risk_score": 0.0,
                 }
@@ -247,7 +265,6 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
             # Create session model
             session = Session(
                 id=session_id,
-                job_id=job_id,
                 pcap_source=Path(pcap_path).name,
                 src_ip=reassembled.client_ip,
                 dst_ip=reassembled.server_ip,
@@ -341,22 +358,8 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
             session.risk_score = risk_score
 
             session_dict = session.model_dump()
+            session_dict.update(published=False, run_id=run_id, org_id=org_id, owner_id=job["owner_id"], job_id=job_id, source_kind=job.get("source_kind", "manual_capture"))
             sessions_col.insert_one(session_dict)
-
-            # Dispatch real-time security alerts if configured thresholds are met
-            try:
-                from secure_smtp.alerts.engine import dispatch_alert
-                dispatch_alert(
-                    session_id=session.id,
-                    client_ip=reassembled.client_ip,
-                    server_ip=reassembled.server_ip,
-                    protocol=session.protocol,
-                    risk_score=risk_score.score,
-                    findings=[f.model_dump() for f in findings],
-                    pcap_source=Path(pcap_path).name,
-                )
-            except Exception as alert_err:
-                logger.debug("Alert dispatch skipped or failed: %s", alert_err)
 
             all_feature_vectors.append(fv)
             all_host_ips.append(reassembled.server_ip)
@@ -377,48 +380,34 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                     {"$set": {"anomaly_score": anomaly_score.model_dump()}},
                 )
 
-        # Update host aggregate scores
-        all_hosts = list(hosts_col.find())
-        for h in all_hosts:
-            host_sessions = list(sessions_col.find({"host_id": h["id"]}))
-            s_count = len(host_sessions)
-
-            host_risk_scores = []
-            for s in host_sessions:
-                rs_data = s.get("risk_score")
-                if rs_data:
-                    host_risk_scores.append(RiskScore(**rs_data))
-
-            agg_score = compute_host_rollup(host_risk_scores)
-            hosts_col.update_one(
-                {"id": h["id"]},
-                {"$set": {
-                    "session_count": s_count,
-                    "aggregate_risk_score": agg_score,
-                }},
-            )
-
         # Generate reports
         generate_job_reports(job_id)
 
         # Mark job as done
-        jobs_col.update_one(
-            {"job_id": job_id},
+        completed = jobs_col.update_one(
+            lease,
             {"$set": {
                 "status": "done",
                 "completed_at": datetime.now(UTC),
             }},
         )
 
+        if not completed.modified_count:
+            raise RuntimeError("Assessment lease expired before publication")
+        sessions_col.update_many({"job_id": job_id, "org_id": org_id}, {"$set": {"published": True}})
+        from secure_smtp.monitoring.service import refresh_hosts
+        refresh_hosts(org_id)
+        from secure_smtp.operations.integrations import run_integrations
+        run_integrations(org_id, job_id)
         logger.info("Job %s: Analysis complete", job_id)
 
     except Exception as e:
-        logger.error("Job %s failed: %s", job_id, e, exc_info=True)
+        logger.error("Job %s failed (%s)", job_id, type(e).__name__)
         jobs_col.update_one(
-            {"job_id": job_id},
+            lease,
             {"$set": {
                 "status": "failed",
-                "error_message": str(e),
+                "error_message": "Capture analysis failed. The file may be corrupt, unsupported, or exceed processing limits.",
                 "completed_at": datetime.now(UTC),
             }},
         )

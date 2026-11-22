@@ -8,10 +8,6 @@ from __future__ import annotations
 
 from secure_smtp.db.mongodb import (
     drop_database,
-    get_database,
-    get_hosts_col,
-    get_jobs_col,
-    get_sessions_col,
     init_db_indexes,
 )
 

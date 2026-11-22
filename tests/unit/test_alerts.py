@@ -4,10 +4,9 @@ Unit tests for the real-time alerting and webhook notification engine.
 
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
-from secure_smtp.alerts.engine import AlertEngine, dispatch_alert
+from secure_smtp.alerts.engine import AlertEngine
 
 
 def test_should_alert_disabled_by_default():

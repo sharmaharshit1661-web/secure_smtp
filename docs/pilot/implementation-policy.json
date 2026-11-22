@@ -1,0 +1,30 @@
+{
+  "planning": "deep",
+  "context_depth": "dependency",
+  "verification_depth": "impact",
+  "delegation": "test-adversary",
+  "reason_codes": [
+    "finish-predeployment-P0-P1",
+    "metadata-only-monitoring",
+    "durable-idempotence",
+    "recovery-rehearsal"
+  ],
+  "allowed_write_scope": [
+    "src/secure_smtp",
+    "frontend",
+    "tests",
+    "docs/pilot",
+    "docker",
+    "docker-compose.yml",
+    "Dockerfile.backend",
+    "Dockerfile.frontend",
+    "pyproject.toml",
+    ".env.example",
+    ".dockerignore",
+    "scripts",
+    "README.md",
+    "tests/integration",
+    ".github"
+  ],
+  "decision": "Implement and test all locally achievable P0/P1 pilot/finale software. Do not deploy, capture user traffic, or claim external certification/HA/legal agreements; document external acceptance gates and commercial P2 scope explicitly."
+}

@@ -1,0 +1,34 @@
+
+> frontend@0.0.0 test
+> node --test tests/*.test.js
+
+✔ upload polling resolves only after analysis finishes (0.619333ms)
+✔ analysis failure reports the server reason without retrying (0.174708ms)
+✔ network errors remain failures rather than success or infinite retries (0.601167ms)
+✔ polling has a finite limit and leaves the job recoverable (0.185417ms)
+✔ an aborted request never updates status or reports completion (0.210041ms)
+✔ a previously aborted analysis never sends a request (0.110875ms)
+✔ API requests require sign-in and never use a fallback credential (0.578208ms)
+✔ each API request obtains a current token rather than saving a shared key (0.152291ms)
+✔ capture upload uses the same verified identity and preserves multipart boundaries (9.704167ms)
+✔ missing risk remains unknown while a real zero remains valid (0.336583ms)
+✔ transport classification requires observed protocol evidence (0.27425ms)
+✔ empty telemetry has no invented healthy percentage or average (0.133875ms)
+✔ unknown observations remain in the transport denominator, not the risk average (0.610375ms)
+✔ host filters combine a trimmed search and a valid scored tier (0.225459ms)
+✔ capture selection rejects empty, unsupported, and oversized files (0.122875ms)
+✔ donut counts every host once, including unknown scores and tier boundaries (0.110125ms)
+✔ unknown risk selection does not include low-risk hosts (0.048458ms)
+✔ explicit choice wins over system preference, invalid or missing choices follow the system (1.652792ms)
+✔ a selected theme survives reload and storage failures remain recoverable (0.228291ms)
+✔ pre-paint initialization and runtime switching agree, even when storage access throws (2.607ms)
+✔ light text, status labels and primary actions meet AA contrast (0.839917ms)
+✔ dark text, status labels and primary actions meet AA contrast (0.217083ms)
+ℹ tests 22
+ℹ suites 0
+ℹ pass 22
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 56.62

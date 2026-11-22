@@ -1,14 +1,10 @@
 # 🛡️ Secure SMTP
 
+For installation on your LAN with Clerk or fully offline with Keycloak, see [Private and offline installation](docs/pilot/NETWORK.md).
+
 **Passive Cryptographic Posture Intelligence & Explainable AI Risk Attribution for Enterprise Mail Infrastructure**
 
 ---
-
-> **Pilot security status (22 November 2026):** authentication and report isolation
-> have been hardened and tested locally. See [SECURITY_AUDIT.md](SECURITY_AUDIT.md)
-> for verified behavior, setup, known limits and release gates. Legacy capability
-> descriptions below are not a production-readiness or certification claim.
-
 
 ## 📌 What is Secure SMTP?
 
@@ -206,64 +202,32 @@ Secure SMTP/
 ## 🚀 Quick Start Guide
 
 ### Prerequisites
-- **Python 3.11+** (with virtual environment)
-- **Node.js 20.19+ or 22.12+** & npm
+- **Python 3.10+** (with virtual environment)
+- **Node.js 18+** & npm
 - **MongoDB** running locally or in Docker
 
-### 1. Provision authentication, then launch
-Configure MongoDB in `.env`, then provision the local pilot account. The generated
-password is saved privately under `output/private/`; never commit it.
-
+### 1. Launch the Full Stack (Single Command)
 ```bash
-PYTHONPATH=src .venv/bin/python scripts/provision_local_operator.py
 ./start_demo.sh
 ```
 This automatically:
 1. Activates the Python virtual environment.
-2. Seeds demo traffic only when `SECURE_SMTP_SEED_DEMO=true` is explicitly set.
+2. Seeds MongoDB with realistic demo traffic.
 3. Starts the FastAPI backend on `http://localhost:8000`.
-4. Starts the controlled mail lab only when enabled in configuration.
+4. Starts the Live Mail Lab on ports `2525`, `2526`, `2527`, `2528`.
 5. Starts the React Web Console on `http://localhost:5173`.
 
 ### 2. Run Test Suite
 ```bash
-# Start an isolated MongoDB at 127.0.0.1:27029 first; see SECURITY_AUDIT.md
-.venv/bin/python -m pytest
+# Python backend tests (168 unit tests)
+pytest
 
-# Frontend linter (oxlint: 0 warnings, 0 errors)
+# Frontend linter
 npm run lint --prefix frontend
 
-# Frontend production bundle compilation
+# Frontend production build
 npm run build --prefix frontend
 ```
-
-### 3. Production Deployment with Docker
-Launch the containerized production stack (MongoDB 7.0, Redis 7, FastAPI backend, Nginx frontend reverse proxy):
-```bash
-# Configure production secrets
-cp .env.example .env
-# Edit .env with your production SECURE_SMTP_API_KEY and Mongo credentials
-
-# Build and start services in detached mode
-docker compose up -d --build
-
-# View operational logs
-docker compose logs -f
-```
-
----
-
-## 🛡️ Security Hardening & Testing Verification
-
-Secure SMTP includes multi-layered enterprise defense mechanisms ready for penetration testing and red-team audits:
-
-| Security Control | Implementation Mechanism | Red-Team Testing Command |
-|---|---|---|
-| **In-Memory Rate Limiting** | Sliding-window quota (15/min uploads, 5/min database resets, 30/min Copilot) with automatic HTTP 429 & `Retry-After` headers. | Rapidly send 6 requests: `for i in {1..6}; do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8000/api/live/clear-history -H "X-API-Key: securesmtp_live_secret_key"; done` (Yields `429 Too Many Requests`). |
-| **PCAP Upload Safety** | Pre-flight magic byte inspection (`0xa1b2c3d4`, `0x0a0d0d0a`) and 64KB chunked streaming with 100MB quota. | `curl -X POST http://localhost:8000/api/analyze -H "X-API-Key: securesmtp_live_secret_key" -F "file=@README.md;filename=fake.pcap"` (Yields `400 Bad Request: Invalid capture format`). |
-| **WebSocket Authentication** | Constant-time token verification (`secrets.compare_digest`) on `/ws/live?token=...` with WS close code 1008. | Connect with an invalid token: `wscat -c "ws://localhost:8000/ws/live?token=invalid"` (Connection drops immediately with code 1008). |
-| **Security Headers & Tracing** | Automatic injection of `X-Request-ID`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`, and `Permissions-Policy`. | `curl -i http://localhost:8000/api/health` and inspect defensive response headers. |
-| **Production Fail-Fast Secret Check** | Application refuses to boot in `SECURE_SMTP_ENV=production` if default development secret is retained. | `SECURE_SMTP_ENV=production uvicorn secure_smtp.api.main:app` (Raises `RuntimeError: Refusing to start in production mode...`). |
 
 ---
 

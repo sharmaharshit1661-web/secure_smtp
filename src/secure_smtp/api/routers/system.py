@@ -9,9 +9,11 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
+from secure_smtp.api.auth import require_lab_admin
+from secure_smtp.config import get_settings
 from secure_smtp.db.mongodb import get_mongo_auth_status
 
 logger = logging.getLogger(__name__)
@@ -24,15 +26,17 @@ def health_check() -> dict:
     """Service health check endpoint (unauthenticated for monitoring & status probes)."""
     mongo_status = get_mongo_auth_status()
     is_healthy = mongo_status.get("status") == "connected"
-    return {
-        "status": "healthy" if is_healthy else "degraded",
-        "service": "secure-smtp",
-        "version": "0.1.0",
-        "database": {"status": mongo_status.get("status"), "ping": mongo_status.get("ping", False)},
-    }
+    settings = get_settings()
+    configured = bool(settings.clerk_issuer and settings.pilot_org_id and settings.clerk_authorized_parties)
+    if getattr(settings, "auth_provider", "clerk") == "keycloak":
+        configured = bool(settings.offline_issuer and settings.offline_jwks_url and settings.pilot_org_id)
+    if not is_healthy or not configured:
+        raise HTTPException(503, 'Service not ready')
+    return {"status": "healthy", "service": "secure-smtp"}
 
 
-@router.get("/demo_client.py", include_in_schema=False)
+
+@router.get("/demo_client.py", include_in_schema=False, dependencies=[Depends(require_lab_admin)])
 def download_demo_client() -> FileResponse:
     """Allow remote laptops on the LAN to download the test script directly."""
     demo_script_path = Path(__file__).resolve().parents[4] / "demo_client.py"
@@ -47,7 +51,7 @@ def download_demo_client() -> FileResponse:
     )
 
 
-@router.get("/attacker_proxy.py", include_in_schema=False)
+@router.get("/attacker_proxy.py", include_in_schema=False, dependencies=[Depends(require_lab_admin)])
 def download_attacker_proxy() -> FileResponse:
     """Allow 2nd laptop (interceptor node) to download the MitM proxy script directly."""
     proxy_script_path = Path(__file__).resolve().parents[4] / "attacker_proxy.py"

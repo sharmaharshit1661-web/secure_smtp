@@ -12,5 +12,8 @@
   },
   "workspaces": [
     "frontend"
-  ]
+  ],
+  "devDependencies": {
+    "puppeteer-core": "^25.18.1"
+  }
 }

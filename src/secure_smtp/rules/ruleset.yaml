@@ -87,8 +87,8 @@
   applies_to: session.starttls_completed
   condition: "session.tls_mode == 'starttls' and value == false and session.starttls_advertised == true"
   severity: critical
-  message: "STARTTLS was advertised but never completed — possible downgrade/stripping attack"
-  recommendation: "Investigate for an on-path attacker; consider MTA-STS/DANE enforcement."
+  message: "STARTTLS was advertised but completion was not observed; cause is unconfirmed"
+  recommendation: "Check capture completeness, connection failures and configuration before investigating possible tampering."
 
 # ── No TLS / Plaintext Session ──
 
@@ -96,5 +96,5 @@
   applies_to: session.tls_mode
   condition: "value == 'none'"
   severity: critical
-  message: "Session transmitted entirely in plaintext without any TLS encryption"
+  message: "Plaintext protocol traffic observed; encryption was not observed in this capture"
   recommendation: "Enable TLS on the mail server. Use STARTTLS for port 25/143/110, or implicit TLS on port 465/993/995."

@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import Notice from '../components/Notice';
+import useClipboard from '../hooks/useClipboard';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell
 } from 'recharts';
@@ -17,21 +19,26 @@ import {
   getCopilotBriefing,
   askCopilot,
 } from '../api/client';
+import { riskValue } from '../utils/telemetry';
 import { getTierColorRaw } from '../utils/colors';
+import { trackRemediation } from '../api/client';
 
 const TOOLTIP_STYLE = {
-  backgroundColor: 'rgba(13, 13, 14, 0.96)',
-  border: '1px solid #1F1F23',
+  backgroundColor: 'var(--bg-surface)',
+  border: '1px solid var(--border)',
   borderRadius: '10px',
-  color: '#E8E8EC',
+  color: 'var(--text-primary)',
   fontFamily: 'var(--font-mono)',
   fontSize: '12px',
   boxShadow: 'var(--shadow-md)',
 };
 
 export default function SessionExplorer() {
+  const { copyText, clipboardError } = useClipboard();
   const { hostId: routeHostId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedSession = Number(searchParams.get('session'));
 
   const [hosts, setHosts] = useState([]);
   const [selectedHostId, setSelectedHostId] = useState(routeHostId ? Number(routeHostId) : null);
@@ -40,7 +47,7 @@ export default function SessionExplorer() {
   const [sessionData, setSessionData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sessionLoading, setSessionLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('handshake');
+  const [activeTab, setActiveTab] = useState('findings');
   const [serverType, setServerType] = useState('postfix');
   const [remediationData, setRemediationData] = useState(null);
   const [remediationLoading, setRemediationLoading] = useState(false);
@@ -53,127 +60,101 @@ export default function SessionExplorer() {
   const [copiedConfig, setCopiedConfig] = useState(false);
   const [copiedMemo, setCopiedMemo] = useState(false);
 
+  const [tracked, setTracked] = useState({});
+  const [error, setError] = useState('');
+  const [hostsLoading, setHostsLoading] = useState(true);
+  const [retryKey, setRetryKey] = useState(0);
+  const actionIds = useRef({ remediation: 0, briefing: 0, copilot: 0 });
   useEffect(() => {
-    setRemediationData(null);
-    setBriefingData(null);
-    setCopilotAnswer(null);
+    for (const key of Object.keys(actionIds.current)) actionIds.current[key] += 1;
+    setRemediationData(null); setBriefingData(null); setCopilotAnswer(null);
+    setRemediationLoading(false); setBriefingLoading(false); setCopilotLoading(false);
+    setCopiedConfig(false); setCopiedMemo(false);
   }, [selectedSessionId]);
+
+  useEffect(() => {
+    actionIds.current.remediation += 1;
+    setRemediationData(null); setRemediationLoading(false); setCopiedConfig(false);
+  }, [serverType]);
 
   const handleFetchRemediation = useCallback(async (type = serverType) => {
     if (!selectedSessionId) return;
-    setRemediationLoading(true);
+    const id = ++actionIds.current.remediation;
+    setRemediationLoading(true); setError(''); setRemediationData(null);
     try {
-      const res = await getCopilotRemediation(selectedSessionId, type);
-      setRemediationData(res);
+      const result = await getCopilotRemediation(selectedSessionId, type);
+      if (id === actionIds.current.remediation) setRemediationData(result);
     } catch (err) {
-      console.error('Failed to get remediation:', err);
-    } finally {
-      setRemediationLoading(false);
-    }
+      if (id === actionIds.current.remediation) setError(`Could not generate configuration. ${err.message}`);
+    } finally { if (id === actionIds.current.remediation) setRemediationLoading(false); }
   }, [selectedSessionId, serverType]);
-
   const handleFetchBriefing = useCallback(async () => {
     if (!selectedSessionId) return;
-    setBriefingLoading(true);
+    const id = ++actionIds.current.briefing;
+    setBriefingLoading(true); setError('');
     try {
-      const res = await getCopilotBriefing(selectedSessionId);
-      setBriefingData(res);
+      const result = await getCopilotBriefing(selectedSessionId);
+      if (id === actionIds.current.briefing) setBriefingData(result);
     } catch (err) {
-      console.error('Failed to get briefing:', err);
-    } finally {
-      setBriefingLoading(false);
-    }
+      if (id === actionIds.current.briefing) setError(`Could not generate briefing. ${err.message}`);
+    } finally { if (id === actionIds.current.briefing) setBriefingLoading(false); }
   }, [selectedSessionId]);
-
   const handleAskCopilot = async (queryText) => {
-    const q = queryText || copilotQuery;
-    if (!selectedSessionId || !q.trim()) return;
-    setCopilotLoading(true);
+    const query = (queryText || copilotQuery).trim();
+    if (!selectedSessionId || !query || copilotLoading) return;
+    const id = ++actionIds.current.copilot;
+    setCopilotLoading(true); setError('');
     try {
-      const res = await askCopilot(selectedSessionId, q);
-      setCopilotAnswer(res.answer);
-      setCopilotEngine(res.engine);
+      const result = await askCopilot(selectedSessionId, query);
+      if (id === actionIds.current.copilot) { setCopilotAnswer(result.answer); setCopilotEngine(result.engine); }
     } catch (err) {
-      console.error('Failed to query copilot:', err);
-    } finally {
-      setCopilotLoading(false);
-    }
+      if (id === actionIds.current.copilot) setError(`Could not answer your question. ${err.message}`);
+    } finally { if (id === actionIds.current.copilot) setCopilotLoading(false); }
   };
 
   useEffect(() => {
-    if (activeTab === 'copilot' && selectedSessionId) {
-      if (!remediationData) {
-        handleFetchRemediation(serverType);
-      }
-      if (!briefingData) {
-        handleFetchBriefing();
-      }
-    }
-  }, [activeTab, selectedSessionId, remediationData, briefingData, serverType, handleFetchRemediation, handleFetchBriefing]);
-
-  // Fetch host list
+    let cancelled = false;
+    setHostsLoading(true); setError('');
+    Promise.all([getHosts(), requestedSession && !routeHostId ? getSessionDetail(requestedSession) : null]).then(([data, requested]) => {
+      if (cancelled) return;
+      const sorted = [...data].sort((a, b) => (b.aggregate_risk_score || 0) - (a.aggregate_risk_score || 0));
+      setHosts(sorted);
+      setSelectedHostId(routeHostId ? Number(routeHostId) : requested?.host_id ?? sorted[0]?.host_id ?? null);
+    }).catch(err => { if (!cancelled) { setHosts([]); setError(`Could not load hosts. ${err.message}`); } })
+      .finally(() => { if (!cancelled) setHostsLoading(false); });
+    return () => { cancelled = true; };
+  }, [routeHostId, requestedSession, retryKey]);
   useEffect(() => {
-    getHosts()
-      .then((data) => {
-        const sorted = (data || []).sort((a, b) => (b.aggregate_risk_score || 0) - (a.aggregate_risk_score || 0));
-        setHosts(sorted);
-        if (sorted.length > 0) {
-          if (routeHostId) {
-            setSelectedHostId(Number(routeHostId));
-          } else {
-            setSelectedHostId((prev) => prev || sorted[0].host_id);
-          }
-        }
-      })
-      .catch((err) => console.error('Failed to load hosts:', err));
-  }, [routeHostId]);
-
-  // When selectedHostId changes, fetch host sessions
-  useEffect(() => {
-    if (!selectedHostId) return;
+    let cancelled = false;
+    setHostSessions([]); setSelectedSessionId(null); setSessionData(null);
+    if (!selectedHostId) { setLoading(false); return; }
     setLoading(true);
-    getHostDetail(selectedHostId)
-      .then((detail) => {
-        const sessList = detail?.sessions || [];
-        setHostSessions(sessList);
-        if (sessList.length > 0) {
-          setSelectedSessionId(sessList[0].session_id);
-        } else {
-          setSelectedSessionId(null);
-          setSessionData(null);
-        }
-      })
-      .catch((err) => {
-        console.error('Failed to load host detail:', err);
-        setHostSessions([]);
-      })
-      .finally(() => setLoading(false));
-  }, [selectedHostId]);
-
-  // When selectedSessionId changes, fetch deep session details
+    getHostDetail(selectedHostId).then(detail => {
+      if (cancelled) return;
+      const list = detail?.sessions || [];
+      setHostSessions(list); setSelectedSessionId(list.find(session => session.session_id === requestedSession)?.session_id ?? list[0]?.session_id ?? null);
+    }).catch(err => { if (!cancelled) setError(`Could not load this host. ${err.message}`); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedHostId, requestedSession, retryKey]);
   useEffect(() => {
-    if (!selectedSessionId) return;
+    let cancelled = false;
+    setSessionData(null);
+    if (!selectedSessionId) { setSessionLoading(false); return; }
     setSessionLoading(true);
-    getSessionDetail(selectedSessionId)
-      .then((detail) => {
-        setSessionData(detail);
-      })
-      .catch((err) => {
-        console.error('Failed to load session telemetry:', err);
-        setSessionData(null);
-      })
-      .finally(() => setSessionLoading(false));
-  }, [selectedSessionId]);
-
-  const handleHostChange = (e) => {
-    const newId = Number(e.target.value);
-    setSelectedHostId(newId);
-    navigate(`/dashboard/sessions/${newId}`);
+    getSessionDetail(selectedSessionId).then(detail => { if (!cancelled) setSessionData(detail); })
+      .catch(err => { if (!cancelled) setError(`Could not load this session. ${err.message}`); })
+      .finally(() => { if (!cancelled) setSessionLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedSessionId, retryKey]);
+  const handleHostChange = event => {
+    const id = Number(event.target.value);
+    setError(''); setSelectedHostId(id); navigate(`/dashboard/sessions/${id}`);
   };
 
   const hs = sessionData?.handshake;
-  const riskScore = sessionData?.risk_score?.score ?? 0;
-  const riskTier = sessionData?.risk_score?.tier ?? 'clean';
+  const riskScore = riskValue(sessionData?.risk_score?.score);
+  const riskTier = sessionData?.risk_score?.tier ?? 'info';
   const anomaly = sessionData?.anomaly_score;
   const findings = sessionData?.findings || [];
   const certs = sessionData?.certificates || [];
@@ -207,6 +188,8 @@ export default function SessionExplorer() {
 
   return (
     <div className="flex flex-col gap-5">
+      {clipboardError && <Notice>{clipboardError}</Notice>}
+      {error && <Notice onRetry={() => setRetryKey(key => key + 1)}>{error}</Notice>}
       {/* Title & Selectors */}
       <div className="page-header animate-in">
         <div>
@@ -215,7 +198,7 @@ export default function SessionExplorer() {
             Session Explorer
           </h1>
           <p className="page-subtitle">
-            Deep packet-level cryptographic analysis, compliance checks, and SHAP risk attribution
+            Select a session to review its risks and evidence.
           </p>
         </div>
       </div>
@@ -224,32 +207,36 @@ export default function SessionExplorer() {
       <div className="card animate-in animate-in-1" style={{ padding: '16px 20px' }}>
         <div className="grid grid-1-2 gap-4 items-center">
           <div>
-            <label className="field-label">Target Monitored Host</label>
+            <label className="field-label" htmlFor="session-host">Monitored host</label>
             <select
               className="select"
+              id="session-host"
               value={selectedHostId || ''}
               onChange={handleHostChange}
               disabled={hosts.length === 0}
             >
+              {!hosts.length && <option value="">{hostsLoading ? 'Loading hosts…' : 'No hosts available'}</option>}
               {hosts.map((h) => (
                 <option key={h.host_id} value={h.host_id}>
-                  {h.ip} — Risk {Math.round(h.aggregate_risk_score || 0)} ({h.session_count} sessions)
+                  {h.ip} — Risk {riskValue(h.aggregate_risk_score) == null ? 'unknown' : Math.round(h.aggregate_risk_score)} ({h.session_count} sessions)
                 </option>
               ))}
             </select>
           </div>
 
           <div>
-            <label className="field-label">Forensic Session Stream</label>
+            <label className="field-label" htmlFor="session-stream">Captured session</label>
             <select
               className="select"
+              id="session-stream"
               value={selectedSessionId || ''}
               onChange={(e) => setSelectedSessionId(Number(e.target.value))}
               disabled={hostSessions.length === 0}
             >
+              {!hostSessions.length && <option value="">{loading ? 'Loading sessions…' : 'No sessions available'}</option>}
               {hostSessions.map((s) => (
                 <option key={s.session_id} value={s.session_id}>
-                  Session #{s.session_id} | {s.src_ip}:{s.src_port} → {s.dst_ip}:{s.dst_port} [{s.protocol?.toUpperCase()}] — Risk {Math.round(s.risk_score || 0)}
+                  Session #{s.session_id} | {s.src_ip}:{s.src_port} → {s.dst_ip}:{s.dst_port} [{s.protocol?.toUpperCase()}] — Risk {s.risk_score == null ? 'unknown' : Math.round(s.risk_score)}
                 </option>
               ))}
             </select>
@@ -258,7 +245,7 @@ export default function SessionExplorer() {
       </div>
 
       {/* Loading & Empty States */}
-      {loading || sessionLoading ? (
+      {hostsLoading || loading || sessionLoading ? (
         <div className="flex flex-col gap-3">
           <div className="skeleton" style={{ height: '90px' }} />
           <div className="skeleton" style={{ height: '180px' }} />
@@ -281,121 +268,56 @@ export default function SessionExplorer() {
             <WireDiagram session={sessionData} />
           </div>
 
-          {/* Top 3 Summary Cards */}
-          <div className="grid grid-3">
-            {/* Risk Gauge */}
-            <div className="card card-hover flex flex-col items-center justify-center animate-in animate-in-3" style={{ textAlign: 'center', padding: '24px' }}>
-              <div className="kpi-label" style={{ marginBottom: 'var(--space-3)' }}>
-                Cryptographic Risk Gauge
-              </div>
-              <RiskGauge score={riskScore} tier={riskTier} size={150} />
-              <div style={{ marginTop: 'var(--space-2)' }}>
-                <SeverityBadge severity={riskTier} />
-              </div>
-            </div>
-
-            {/* Handshake Intelligence */}
-            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3" style={{ padding: '24px' }}>
-              <div className="section-header" style={{ marginBottom: 'var(--space-4)' }}>
-                <Icon name="lock" size={15} /> Handshake Parameters
-              </div>
-              {hs ? (
-                <div className="info-grid">
-                  <div>
-                    <div className="info-item-label">Negotiated Version</div>
-                    <div className="info-item-value text-accent">{hs.tls_version_negotiated || 'N/A'}</div>
-                  </div>
-                  <div>
-                    <div className="info-item-label">Key Exchange</div>
-                    <div className="info-item-value">{String(hs.key_exchange_type || 'N/A').toUpperCase()}</div>
-                  </div>
-                  <div>
-                    <div className="info-item-label">Forward Secrecy</div>
-                    <div className="info-item-value">
-                      {hs.forward_secrecy ? (
-                        <span className="text-clean font-semibold">Supported (PFS)</span>
-                      ) : (
-                        <span className="text-critical font-semibold">None (Static RSA)</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="info-item-label">Cipher Suite</div>
-                    <div className="info-item-value text-xs">{hs.cipher_suite_negotiated || 'N/A'}</div>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-critical text-sm font-semibold flex items-center gap-2">
-                  <Icon name="alert" size={15} /> Plaintext session — no cryptographic handshake was negotiated.
-                </div>
-              )}
-            </div>
-
-            {/* Anomaly Detection */}
-            <div className="card card-hover flex flex-col justify-center animate-in animate-in-3" style={{ padding: '24px' }}>
-              <div className="section-header" style={{ marginBottom: 'var(--space-4)' }}>
-                <Icon name="brain" size={15} /> AI Anomaly Detection
-              </div>
-              {anomaly ? (
-                <div>
-                  <div className="flex items-center gap-2" style={{ marginBottom: 'var(--space-2)' }}>
-                    <SeverityBadge severity={anomaly.is_anomalous ? 'critical' : 'clean'} />
-                    <span className="font-semibold text-sm">
-                      {anomaly.is_anomalous ? 'Unusual Anomaly' : 'Normal Conformity'}
-                    </span>
-                  </div>
-                  <div className="text-secondary text-sm font-mono">
-                    Isolation Forest Score:{' '}
-                    <span className="font-bold text-accent">
-                      {Number(anomaly.score || 0).toFixed(3)}
-                    </span>
-                  </div>
-                  <div className="text-muted text-xs font-mono" style={{ marginTop: 'var(--space-1)' }}>
-                    Baseline: {anomaly.baseline || 'Global Fleet'}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-secondary text-sm">No anomaly model prediction available.</div>
-              )}
-            </div>
-          </div>
+          <section className="session-summary" aria-label="Session summary">
+            <div className="session-risk"><RiskGauge score={riskScore} tier={riskTier} size={120} /><SeverityBadge severity={riskTier} /></div>
+            <dl className="session-facts">
+              <div><dt>Findings</dt><dd>{findings.length}</dd></div>
+              <div><dt>TLS version</dt><dd>{hs?.tls_version_negotiated || 'Not observed'}</dd></div>
+              <div><dt>Anomaly</dt><dd>{anomaly ? anomaly.is_anomalous ? 'Detected' : 'Not detected' : 'Not assessed'}</dd></div>
+            </dl>
+          </section>
 
           {/* Deep Tabs */}
           <div className="card animate-in animate-in-4" style={{ padding: 'var(--space-5)' }}>
-            <div className="tabs">
+            <div className="tabs" role="group" aria-label="Session details">
+              <button
+                className={`tab ${activeTab === 'findings' ? 'active' : ''}`}
+                aria-pressed={activeTab === 'findings'}
+                onClick={() => setActiveTab('findings')}
+              >
+                <Icon name="alert" size={14} /> Findings ({findings.length})
+              </button>
               <button
                 className={`tab ${activeTab === 'handshake' ? 'active' : ''}`}
+                aria-pressed={activeTab === 'handshake'}
                 onClick={() => setActiveTab('handshake')}
               >
-                <Icon name="lock" size={14} /> TLS Handshake &amp; Fingerprints
+                <Icon name="lock" size={14} /> Handshake
               </button>
               <button
                 className={`tab ${activeTab === 'certs' ? 'active' : ''}`}
+                aria-pressed={activeTab === 'certs'}
                 onClick={() => setActiveTab('certs')}
               >
                 <Icon name="certificate" size={14} /> Certificate Chain ({certs.length})
               </button>
               <button
-                className={`tab ${activeTab === 'findings' ? 'active' : ''}`}
-                onClick={() => setActiveTab('findings')}
-              >
-                <Icon name="alert" size={14} /> Posture Findings ({findings.length})
-              </button>
-              <button
                 className={`tab ${activeTab === 'shap' ? 'active' : ''}`}
+                aria-pressed={activeTab === 'shap'}
                 onClick={() => setActiveTab('shap')}
               >
-                <Icon name="chart" size={14} /> AI Risk Attribution (SHAP)
+                <Icon name="chart" size={14} /> Risk drivers
               </button>
               <button
                 className={`tab ${activeTab === 'copilot' ? 'active' : ''}`}
+                aria-pressed={activeTab === 'copilot'}
                 onClick={() => setActiveTab('copilot')}
               >
-                <Icon name="sparkles" size={14} /> AI Security Copilot
+                <Icon name="sparkle" size={14} /> AI guidance
               </button>
             </div>
 
-            {/* Tab 1: TLS Handshake & Fingerprints */}
+            {/* Tab 1: Handshake */}
             {activeTab === 'handshake' && (
               hs ? (
                 <div className="grid grid-2 gap-5">
@@ -419,7 +341,7 @@ export default function SessionExplorer() {
                         </div>
                         <div>
                           <div className="info-item-label">Forward Secrecy</div>
-                          <div className="info-item-value">{hs.forward_secrecy ? 'Supported' : 'None'}</div>
+                          <div className="info-item-value">{hs.forward_secrecy == null ? 'Unknown' : hs.forward_secrecy ? 'Supported' : 'Not observed'}</div>
                         </div>
                       </div>
                       {hs.visibility_limited && (
@@ -460,7 +382,7 @@ export default function SessionExplorer() {
               ) : (
                 <div className="empty-state">
                   <div className="empty-state-icon"><Icon name="alert" size={24} /></div>
-                  <p>No TLS Handshake data exists for unencrypted plaintext traffic.</p>
+                  <p>No TLS handshake data was captured for this session.</p>
                 </div>
               )
             )}
@@ -470,32 +392,38 @@ export default function SessionExplorer() {
               <CertChain certificates={certs} />
             )}
 
-            {/* Tab 3: Posture Findings */}
+            {/* Tab 3: Findings */}
             {activeTab === 'findings' && (
               findings.length > 0 ? (
                 <div className="flex flex-col gap-1">
                   {findings.map((f, i) => (
                     <div key={i} className="animate-in" style={{ animationDelay: `${Math.min(i * 40, 240)}ms` }}>
                       <FindingCard finding={f} />
+                      <button className="text-action" disabled={tracked[selectedSessionId + ':' + f.rule_id]} onClick={async () => {
+                        try {
+                          await trackRemediation(selectedSessionId, f.rule_id);
+                          setTracked(previous => ({...previous, [selectedSessionId + ':' + f.rule_id]: true}));
+                        } catch (err) { setError('Could not track finding. ' + err.message); }
+                      }}>{tracked[selectedSessionId + ':' + f.rule_id] ? 'Tracked in Operations' : 'Track follow-up'}</button>
                     </div>
                   ))}
                 </div>
               ) : (
                 <div className="empty-state">
                   <div className="empty-state-icon"><Icon name="check" size={24} /></div>
-                  <div className="font-bold text-md text-primary">Pristine Posture</div>
-                  <p className="text-secondary text-sm">Zero cryptographic weaknesses or compliance infractions detected.</p>
+                  <div className="font-bold text-md text-primary">No findings recorded</div>
+                  <p className="text-secondary text-sm">No findings are recorded for this session. Results depend on the traffic and handshake data available.</p>
                 </div>
               )
             )}
 
-            {/* Tab 4: AI Risk Attribution (SHAP) */}
+            {/* Tab 4: Risk drivers */}
             {activeTab === 'shap' && (
               <div className="flex flex-col gap-5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm text-secondary">Scoring Engine:</span>
                   <code className="text-mono text-accent text-sm font-bold">
-                    {explanation?.method || 'Rule Weighted + XGBoost Calibration'}
+                    {explanation?.method || 'Not reported'}
                   </code>
                 </div>
 
@@ -516,7 +444,7 @@ export default function SessionExplorer() {
                               cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                               formatter={(val) => [`${val}%`, 'Impact Contribution']}
                             />
-                            <Bar dataKey="percentage" radius={[5, 5, 0, 0]} maxBarSize={34}>
+                            <Bar isAnimationActive={false} dataKey="percentage" radius={[5, 5, 0, 0]} maxBarSize={34}>
                               {contributions.map((entry, index) => (
                                 <Cell key={`contrib-${index}`} fill={entry.color} />
                               ))}
@@ -555,7 +483,7 @@ export default function SessionExplorer() {
                               cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                               formatter={(val) => [val, 'SHAP Value']}
                             />
-                            <Bar dataKey="impact" radius={[0, 5, 5, 0]} maxBarSize={16}>
+                            <Bar isAnimationActive={false} dataKey="impact" radius={[0, 5, 5, 0]} maxBarSize={16}>
                               {shapChartData.map((entry, index) => (
                                 <Cell key={`shap-${index}`} fill={entry.color} />
                               ))}
@@ -568,26 +496,27 @@ export default function SessionExplorer() {
                     )}
                   </div>
                 </div>
+                {(contributions.length > 0 || shapChartData.length > 0) && <details className="chart-data-details"><summary>View chart values</summary><div className="ui-table-scroll"><table className="ui-table"><caption>Risk attribution for this session</caption><thead><tr><th>Feature</th><th>Measure</th><th>Value</th></tr></thead><tbody>{contributions.map((row, index) => <tr key={`rule-${index}`}><td>{row.name}</td><td>Contribution</td><td>{row.percentage}%</td></tr>)}{shapChartData.map(row => <tr key={row.feature}><td>{row.feature}</td><td>SHAP impact</td><td>{row.impact > 0 ? '+' : ''}{row.impact}</td></tr>)}</tbody></table></div><p className="chart-caption">Positive SHAP values increase the model’s risk estimate; negative values decrease it.</p></details>}
               </div>
             )}
 
-            {/* Tab 5: AI Security Copilot */}
+            {/* Tab 5: AI guidance */}
             {activeTab === 'copilot' && (
               <div className="flex flex-col gap-5">
                 {/* Section 1: Server Configuration Directives */}
                 <div
                   className="card"
                   style={{
-                    borderColor: 'var(--amber-signal)',
-                    background: 'linear-gradient(180deg, rgba(245, 158, 11, 0.05) 0%, rgba(20, 24, 33, 0.6) 100%)',
+                    borderColor: 'var(--border)',
+                    background: 'var(--bg-inset)',
                   }}
                 >
                   <div className="flex justify-between items-center" style={{ marginBottom: 'var(--space-3)' }}>
                     <div className="flex items-center gap-2">
-                      <span style={{ fontSize: '1.2rem' }}>⚡</span>
+                      <Icon name="code" size={18} />
                       <div>
-                        <div className="font-bold text-md text-primary">Autonomous Server Remediation Directives</div>
-                        <div className="text-secondary text-xs">Production-grade configuration fixes synthesized for your exact mail server daemon.</div>
+                        <div className="font-bold text-md text-primary">Server configuration guidance</div>
+                        <div className="text-secondary text-xs">Generate suggested settings for the selected session and review them before applying.</div>
                       </div>
                     </div>
 
@@ -596,11 +525,9 @@ export default function SessionExplorer() {
                       <select
                         className="select"
                         style={{ width: '190px', padding: '6px 10px', fontSize: '12px' }}
+                        aria-label="Mail server software"
                         value={serverType}
-                        onChange={(e) => {
-                          setServerType(e.target.value);
-                          handleFetchRemediation(e.target.value);
-                        }}
+                        onChange={(e) => setServerType(e.target.value)}
                       >
                         <option value="postfix">Postfix (main.cf)</option>
                         <option value="dovecot">Dovecot (10-ssl.conf)</option>
@@ -613,7 +540,7 @@ export default function SessionExplorer() {
                         onClick={() => handleFetchRemediation(serverType)}
                         disabled={remediationLoading}
                       >
-                        {remediationLoading ? 'Synthesizing...' : 'Generate Fix'}
+                        {remediationLoading ? 'Generating…' : 'Generate Fix'}
                       </button>
                     </div>
                   </div>
@@ -627,9 +554,10 @@ export default function SessionExplorer() {
                         <button
                           className="btn btn-outline btn-sm"
                           onClick={() => {
-                            navigator.clipboard.writeText(remediationData.config_content);
+                            copyText(remediationData.config_content, () => {
                             setCopiedConfig(true);
                             setTimeout(() => setCopiedConfig(false), 2000);
+                            });
                           }}
                         >
                           <Icon name="copy" size={13} />
@@ -716,9 +644,10 @@ export default function SessionExplorer() {
                         <button
                           className="btn btn-outline btn-sm"
                           onClick={() => {
-                            navigator.clipboard.writeText(briefingData.content_markdown);
+                            copyText(briefingData.content_markdown, () => {
                             setCopiedMemo(true);
                             setTimeout(() => setCopiedMemo(false), 2000);
+                            });
                           }}
                         >
                           <Icon name="copy" size={13} />
@@ -758,7 +687,7 @@ export default function SessionExplorer() {
                   <div className="flex items-center gap-2" style={{ marginBottom: 'var(--space-3)' }}>
                     <span className="text-accent"><Icon name="terminal" size={16} /></span>
                     <div>
-                      <div className="font-bold text-md text-primary">Ask the AI Security Copilot</div>
+                      <div className="font-bold text-md text-primary">Ask the AI guidance</div>
                       <div className="text-secondary text-xs">Ask specific questions regarding protocol compatibility, downgrade threats, or post-quantum risk.</div>
                     </div>
                   </div>
@@ -769,6 +698,7 @@ export default function SessionExplorer() {
                       className="input"
                       style={{ flex: 1 }}
                       placeholder="e.g. Will disabling TLS 1.0 cause downtime? What is the threat if left unpatched?"
+                      aria-label="Ask about this session"
                       value={copilotQuery}
                       onChange={(e) => setCopilotQuery(e.target.value)}
                       onKeyDown={(e) => {

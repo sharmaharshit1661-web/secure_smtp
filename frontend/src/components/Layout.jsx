@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Outlet, Link } from 'react-router-dom';
-import { SignedIn, SignedOut, UserButton } from '@clerk/clerk-react';
+import { Outlet, Link, useLocation } from 'react-router-dom';
+import { SignedIn, SignedOut, UserButton, OrganizationSwitcher } from '@clerk/clerk-react';
 import Sidebar from './Sidebar';
 import Icon from './Icon';
 import { getHosts } from '../api/client';
-import { clerkAppearance } from '../config/clerkAppearance';
+import ThemeToggle from './ThemeToggle';
 import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
-  const [stats, setStats] = useState({});
+  const [stats, setStats] = useState(null);
+  const [statusError, setStatusError] = useState(false);
+  const { pathname } = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
@@ -35,6 +37,35 @@ export default function Layout() {
   const { user, logout, isClerkEnabled } = useAuth();
 
   useEffect(() => {
+    if (!sidebarOpen) return;
+    const previousFocus = document.activeElement;
+    const navigation = document.getElementById('console-navigation');
+    const focusable = () => [...navigation.querySelectorAll('a[href],button:not(:disabled)')].filter(element => element.getClientRects().length);
+    focusable()[0]?.focus();
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const handleKey = event => {
+      if (event.key === 'Escape') { event.preventDefault(); setSidebarOpen(false); }
+      if (event.key === 'Tab') {
+        const items = focusable();
+        const first = items[0]; const last = items.at(-1);
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    const query = window.matchMedia('(max-width: 768px)');
+    const closeOnDesktop = () => { if (!query.matches) setSidebarOpen(false); };
+    window.addEventListener('keydown', handleKey);
+    query.addEventListener('change', closeOnDesktop);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      query.removeEventListener('change', closeOnDesktop);
+      document.body.style.overflow = overflow;
+      previousFocus?.focus?.();
+    };
+  }, [sidebarOpen]);
+
+  useEffect(() => {
     getHosts()
       .then((hosts) => {
         const sorted = [...hosts].sort((a, b) => (b.aggregate_risk_score || 0) - (a.aggregate_risk_score || 0));
@@ -43,25 +74,29 @@ export default function Layout() {
         const criticalHosts = sorted.filter((h) => (h.aggregate_risk_score || 0) >= 75).length;
         setStats({ totalHosts, totalSessions, criticalHosts });
       })
-      .catch(() => setStats({ totalHosts: 0, totalSessions: 0, criticalHosts: 0 }));
+      .catch(() => setStatusError(true));
   }, []);
 
   return (
     <div className="app-layout" style={{ '--sidebar-width': `${sidebarWidth}px` }}>
+      <a className="skip-link" href="#workspace-content">Skip to workspace</a>
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         width={sidebarWidth}
         onWidthChange={handleWidthChange}
       />
-      <div className="app-main">
+      {sidebarOpen && <button tabIndex={-1} className="navigation-backdrop" aria-label="Close navigation" onClick={() => setSidebarOpen(false)} />}
+      <div className="app-main" inert={sidebarOpen}>
         <header className="app-header">
           <div className="flex items-center gap-3">
             <button
               className="btn btn-sm mobile-menu-toggle"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               aria-label="Toggle navigation"
-              style={{ display: 'none', padding: '6px 10px' }}
+              aria-expanded={sidebarOpen}
+              aria-controls="console-navigation"
+              style={{ padding: '6px 10px' }}
             >
               <Icon name="menu" size={16} />
             </button>
@@ -84,25 +119,27 @@ export default function Layout() {
               title="Return to Product Landing Page"
             >
               <Icon name="arrowRight" size={11} style={{ transform: 'rotate(180deg)' }} />
-              <span>Overview</span>
+              <span>Product home</span>
             </Link>
           </div>
 
           <div className="flex items-center gap-3">
             <div className="status-beacon" style={{ fontFamily: 'var(--font-mono)' }}>
-              <span className="status-dot status-dot-active" />
+              <span className="status-dot" style={{ background: statusError ? 'var(--sev-high)' : stats ? 'var(--sev-clean)' : 'var(--text-muted)' }} />
               <span style={{ color: 'var(--text-secondary)', fontWeight: 500, fontSize: '12px' }}>
-                {stats.totalHosts ?? 0} hosts
+                {statusError ? 'API unavailable' : stats ? `${stats.totalHosts} hosts` : 'Connecting…'}
               </span>
             </div>
 
+            <ThemeToggle />
             {/* Authentication Header Controls */}
             {isClerkEnabled ? (
               <div className="flex items-center gap-2">
                 <SignedIn>
+                  <OrganizationSwitcher hidePersonal />
                   <UserButton
                     afterSignOutUrl="/"
-                    appearance={clerkAppearance}
+
                   />
                 </SignedIn>
                 <SignedOut>
@@ -151,7 +188,7 @@ export default function Layout() {
                       {user.name || 'Operator'}
                     </span>
                     <span style={{ fontSize: '10px', color: 'var(--primary)', fontFamily: 'var(--font-mono)' }}>
-                      {user.role || 'Operator'}
+                      {isClerkEnabled ? 'Signed in' : 'Local account'}
                     </span>
                   </div>
                 </div>
@@ -190,14 +227,14 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="app-content">
+        <main className="app-content" id="workspace-content" key={pathname} tabIndex={-1}>
           <Outlet />
         </main>
 
         <footer className="app-footer">
           <div className="flex items-center gap-3">
             <span style={{ color: 'var(--sev-clean)', fontSize: '8px' }}>●</span>
-            <span>Cryptographic Posture Intelligence Active</span>
+            <span>Secure SMTP · Cryptographic posture intelligence</span>
           </div>
           <div>
             <a

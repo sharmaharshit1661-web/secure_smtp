@@ -1,120 +1,90 @@
-# ==============================================================================
-# Secure SMTP — Production Docker Compose Orchestrator
-# ==============================================================================
-# Launches the full production stack with 1 command:
-#   docker-compose up -d --build
-#
-# Services:
-#   - frontend: React + Vite web console on Nginx (Port 80)
-#   - backend:  FastAPI cryptographic assessment API (Port 8000)
-#   - mongodb:  MongoDB database with authentication (Port 27017)
-#   - redis:    Redis cache and async queue broker (Port 6379)
-# ==============================================================================
-
-version: '3.8'
-
+# Single-instance HTTPS pilot. Use a fresh database; see docs/pilot/README.md.
 services:
-  mongodb:
-    image: mongo:7.0
-    container_name: secure_smtp_mongodb
+  edge:
+    image: caddy:2-alpine
     restart: unless-stopped
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${SECURE_SMTP_MONGO_USER:-secure_admin}
-      MONGO_INITDB_ROOT_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set a unique database password}
-      MONGO_INITDB_DATABASE: ${SECURE_SMTP_MONGO_DB:-secure_smtp}
-    ports:
-      - "127.0.0.1:27017:27017"
+      PILOT_DOMAIN: ${PILOT_DOMAIN:?Set the pilot DNS hostname}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      ingress:
+        ipv4_address: 172.29.251.2
+    depends_on: [frontend]
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?Set a separate MongoDB administrator}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set a unique MongoDB administrator password}
+      SECURE_SMTP_MONGO_USER: ${SECURE_SMTP_MONGO_USER:?Set MongoDB application username}
+      SECURE_SMTP_MONGO_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set MongoDB application password}
     volumes:
       - mongodb_data:/data/db
-    networks:
-      - securesmtp_net
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/10-application.js:ro
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: secure_smtp_redis
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - securesmtp_net
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: secure_smtp_backend
     restart: unless-stopped
     depends_on:
-      mongodb:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      mongodb: {condition: service_healthy}
     environment:
-      - SECURE_SMTP_ENV=${SECURE_SMTP_ENV:-production}
-      - SECURE_SMTP_MONGO_URI=${SECURE_SMTP_MONGO_URI:-}
-      - SECURE_SMTP_MONGO_HOST=mongodb
-      - SECURE_SMTP_MONGO_PORT=27017
-      - SECURE_SMTP_MONGO_DB=secure_smtp
-      - SECURE_SMTP_MONGO_USER=${SECURE_SMTP_MONGO_USER:-secure_admin}
-      - SECURE_SMTP_MONGO_PASSWORD=${SECURE_SMTP_MONGO_PASSWORD:?Set a unique database password}
-      - SECURE_SMTP_MONGO_AUTH_DB=admin
-      - SECURE_SMTP_MONGO_AUTH_REQUIRED=true
-      - SECURE_SMTP_API_KEY=${SECURE_SMTP_API_KEY:?Set a unique service API key}
-      - SECURE_SMTP_AUTH_REQUIRED=true
-      - SECURE_SMTP_LOCAL_ADMIN_EMAIL=${SECURE_SMTP_LOCAL_ADMIN_EMAIL:-}
-      - SECURE_SMTP_LOCAL_PASSWORD_HASH=${SECURE_SMTP_LOCAL_PASSWORD_HASH:-}
-      - SECURE_SMTP_CLERK_ISSUER=${SECURE_SMTP_CLERK_ISSUER:-}
-      - SECURE_SMTP_CLERK_ORG_ID=${SECURE_SMTP_CLERK_ORG_ID:-}
-      - SECURE_SMTP_DISPATCH_ALLOWED_IPS=${SECURE_SMTP_DISPATCH_ALLOWED_IPS:-127.0.0.1,::1}
-      - SECURE_SMTP_RATE_LIMIT_ENABLED=${SECURE_SMTP_RATE_LIMIT_ENABLED:-true}
-      - SECURE_SMTP_MAX_UPLOAD_SIZE_MB=${SECURE_SMTP_MAX_UPLOAD_SIZE_MB:-100}
-      - SECURE_SMTP_ENABLE_LIVE_LAB=${SECURE_SMTP_ENABLE_LIVE_LAB:-false}
-      - SECURE_SMTP_CORS_ORIGINS=${SECURE_SMTP_CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1}
-      - SECURE_SMTP_ALERTS_ENABLED=${SECURE_SMTP_ALERTS_ENABLED:-false}
-      - SECURE_SMTP_ALERT_WEBHOOK_URL=${SECURE_SMTP_ALERT_WEBHOOK_URL:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-    ports:
-      - "127.0.0.1:8000:8000"
-      - "2525-2528:2525-2528"
+      FORWARDED_ALLOW_IPS: 172.29.251.2
+      SECURE_SMTP_MONGO_HOST: mongodb
+      SECURE_SMTP_MONGO_DB: secure_smtp_pilot
+      SECURE_SMTP_MONGO_USER: ${SECURE_SMTP_MONGO_USER:?Set MongoDB username}
+      SECURE_SMTP_MONGO_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set MongoDB password}
+      SECURE_SMTP_MONGO_AUTH_DB: secure_smtp_pilot
+      SECURE_SMTP_MONGO_AUTH_REQUIRED: "true"
+      SECURE_SMTP_ENABLE_LIVE_LAB: "false"
+      SECURE_SMTP_CLERK_ISSUER: ${SECURE_SMTP_CLERK_ISSUER:?Set Clerk HTTPS issuer}
+      SECURE_SMTP_CLERK_AUDIENCE: ${SECURE_SMTP_CLERK_AUDIENCE:-}
+      SECURE_SMTP_CLERK_AUTHORIZED_PARTIES: '["https://${PILOT_DOMAIN}"]'
+      SECURE_SMTP_PILOT_ORG_ID: ${SECURE_SMTP_PILOT_ORG_ID:?Set pilot Clerk organization ID}
+      SECURE_SMTP_CORS_ORIGINS: '["https://${PILOT_DOMAIN}"]'
+      SECURE_SMTP_ALERTS_ENABLED: ${SECURE_SMTP_ALERTS_ENABLED:-false}
+      SECURE_SMTP_ALERT_WEBHOOK_URL: ${SECURE_SMTP_ALERT_WEBHOOK_URL:-}
+      SECURE_SMTP_ALERT_WEBHOOK_SECRET: ${SECURE_SMTP_ALERT_WEBHOOK_SECRET:-}
+      SECURE_SMTP_ALERT_MIN_SEVERITY: ${SECURE_SMTP_ALERT_MIN_SEVERITY:-HIGH}
+      SECURE_SMTP_ALERT_RISK_THRESHOLD: ${SECURE_SMTP_ALERT_RISK_THRESHOLD:-75}
+      SECURE_SMTP_NEO4J_URI: ${SECURE_SMTP_NEO4J_URI:-}
+      SECURE_SMTP_NEO4J_USER: ${SECURE_SMTP_NEO4J_USER:-neo4j}
+      SECURE_SMTP_NEO4J_PASSWORD: ${SECURE_SMTP_NEO4J_PASSWORD:-}
+      SECURE_SMTP_RETENTION_DAYS: ${SECURE_SMTP_RETENTION_DAYS:-30}
+      SECURE_SMTP_AGENT_OFFLINE_SECONDS: ${SECURE_SMTP_AGENT_OFFLINE_SECONDS:-90}
     volumes:
       - app_uploads:/tmp/secure_smtp_uploads
       - app_reports:/tmp/secure_smtp_reports
-    networks:
-      - securesmtp_net
-
+    networks: [ingress, default]
+    mem_limit: 2g
+    cpus: 2
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:-}
-    container_name: secure_smtp_frontend
+        VITE_CLERK_PUBLISHABLE_KEY: ${VITE_CLERK_PUBLISHABLE_KEY:?Set Clerk public key}
     restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "80:80"
-    networks:
-      - securesmtp_net
-
+    networks: [ingress]
+    depends_on: [backend]
 networks:
-  securesmtp_net:
-    driver: bridge
-
+  ingress:
+    ipam:
+      config:
+        - subnet: 172.29.251.0/28
+  default: {}
 volumes:
   mongodb_data:
-  redis_data:
   app_uploads:
   app_reports:
+  caddy_data:
+  caddy_config:

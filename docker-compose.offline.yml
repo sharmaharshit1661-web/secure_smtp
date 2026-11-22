@@ -1,0 +1,147 @@
+services:
+  edge:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PILOT_DOMAIN: ${PILOT_DOMAIN:?Set the pilot DNS hostname}
+    ports:
+    - "${PILOT_LAN_IP:?Set private interface IP}:80:80"
+    - "${PILOT_LAN_IP:?Set private interface IP}:443:443"
+    volumes:
+    - ./docker/offline/Caddyfile:/etc/caddy/Caddyfile:ro
+    - caddy_data:/data
+    - caddy_config:/config
+    networks:
+      ingress:
+        ipv4_address: 172.29.252.2
+    depends_on:
+    - frontend
+    - identity
+  mongodb:
+    image: mongo:7.0
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:?Set a separate MongoDB administrator}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Set a unique MongoDB administrator password}
+      SECURE_SMTP_MONGO_USER: ${SECURE_SMTP_MONGO_USER:?Set MongoDB application username}
+      SECURE_SMTP_MONGO_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set MongoDB application password}
+    volumes:
+    - mongodb_data:/data/db
+    - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/10-application.js:ro
+    healthcheck:
+      test:
+      - CMD
+      - mongosh
+      - --quiet
+      - --eval
+      - db.adminCommand('ping')
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      FORWARDED_ALLOW_IPS: 172.29.252.2
+      SECURE_SMTP_MONGO_HOST: mongodb
+      SECURE_SMTP_MONGO_DB: secure_smtp_pilot
+      SECURE_SMTP_MONGO_USER: ${SECURE_SMTP_MONGO_USER:?Set MongoDB username}
+      SECURE_SMTP_MONGO_PASSWORD: ${SECURE_SMTP_MONGO_PASSWORD:?Set MongoDB password}
+      SECURE_SMTP_MONGO_AUTH_DB: secure_smtp_pilot
+      SECURE_SMTP_MONGO_AUTH_REQUIRED: 'true'
+      SECURE_SMTP_ENABLE_LIVE_LAB: 'false'
+      SECURE_SMTP_PILOT_ORG_ID: local-pilot
+      SECURE_SMTP_CORS_ORIGINS: '["https://${PILOT_DOMAIN}"]'
+      SECURE_SMTP_ALERTS_ENABLED: ${SECURE_SMTP_ALERTS_ENABLED:-false}
+      SECURE_SMTP_ALERT_WEBHOOK_URL: ${SECURE_SMTP_ALERT_WEBHOOK_URL:-}
+      SECURE_SMTP_ALERT_WEBHOOK_SECRET: ${SECURE_SMTP_ALERT_WEBHOOK_SECRET:-}
+      SECURE_SMTP_ALERT_MIN_SEVERITY: ${SECURE_SMTP_ALERT_MIN_SEVERITY:-HIGH}
+      SECURE_SMTP_ALERT_RISK_THRESHOLD: ${SECURE_SMTP_ALERT_RISK_THRESHOLD:-75}
+      SECURE_SMTP_NEO4J_URI: ${SECURE_SMTP_NEO4J_URI:-}
+      SECURE_SMTP_NEO4J_USER: ${SECURE_SMTP_NEO4J_USER:-neo4j}
+      SECURE_SMTP_NEO4J_PASSWORD: ${SECURE_SMTP_NEO4J_PASSWORD:-}
+      SECURE_SMTP_RETENTION_DAYS: ${SECURE_SMTP_RETENTION_DAYS:-30}
+      SECURE_SMTP_AGENT_OFFLINE_SECONDS: ${SECURE_SMTP_AGENT_OFFLINE_SECONDS:-90}
+      SECURE_SMTP_AUTH_PROVIDER: keycloak
+      SECURE_SMTP_OFFLINE_ISSUER: https://${PILOT_DOMAIN}/id/realms/pilot
+      SECURE_SMTP_OFFLINE_JWKS_URL: http://identity:8080/id/realms/pilot/protocol/openid-connect/certs
+    volumes:
+    - app_uploads:/tmp/secure_smtp_uploads
+    - app_reports:/tmp/secure_smtp_reports
+    networks:
+    - ingress
+    - default
+    mem_limit: 2g
+    cpus: 2
+    image: secure-smtp-backend:pilot
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        VITE_AUTH_PROVIDER: keycloak
+    restart: unless-stopped
+    networks:
+    - ingress
+    depends_on:
+    - backend
+    image: secure-smtp-frontend:offline
+  identity-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set identity database password}
+    volumes:
+    - identity_data:/var/lib/postgresql/data
+    networks:
+    - identity_db
+  identity:
+    image: quay.io/keycloak/keycloak:26.8.2
+    restart: unless-stopped
+    command:
+    - start
+    - --import-realm
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://identity-db/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${IDENTITY_DB_PASSWORD:?Set identity database password}
+      KC_HOSTNAME: https://${PILOT_DOMAIN}/id
+      KC_HTTP_RELATIVE_PATH: /id
+      KC_HTTP_ENABLED: 'true'
+      KC_PROXY_HEADERS: xforwarded
+      KC_PROXY_TRUSTED_ADDRESSES: 172.29.252.2
+      KC_BOOTSTRAP_ADMIN_USERNAME: pilot-bootstrap
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${IDENTITY_BOOTSTRAP_PASSWORD:?Set initial identity
+        admin password}
+      PILOT_DOMAIN: ${PILOT_DOMAIN:?Set internal hostname}
+    volumes:
+    - ./docker/offline/pilot-realm.json:/opt/keycloak/data/import/pilot-realm.json:ro
+    networks:
+    - identity_db
+    - ingress
+    depends_on:
+    - identity-db
+networks:
+  ingress:
+    ipam:
+      config:
+      - subnet: 172.29.252.0/28
+  default: {}
+  identity_db:
+    internal: true
+volumes:
+  mongodb_data: null
+  app_uploads: null
+  app_reports: null
+  caddy_data: null
+  caddy_config: null
+  identity_data: null
+name: secure-smtp-offline

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from secure_smtp.api.main import _run_analysis, get_connection_manager
-from secure_smtp.db.mongodb import get_hosts_col, get_sessions_col
+from secure_smtp.db.mongodb import get_sessions_col
 
 logger = logging.getLogger(__name__)
 
@@ -65,29 +65,30 @@ async def simulate_live_session(scenario_id: str) -> dict[str, Any]:
     if not pcap_file.exists():
         raise FileNotFoundError(f"Scenario PCAP fixture not found: {pcap_file}")
 
-    job_id = f"sim_{uuid.uuid4().hex[:8]}"
+    job_id = str(uuid.uuid4())
+    from secure_smtp.config import get_settings
+    from secure_smtp.db.mongodb import get_jobs_col
+    org_id = get_settings().pilot_org_id
+    if not org_id:
+        raise ValueError("Pilot organization required")
+    get_jobs_col().insert_one({"job_id": job_id, "org_id": org_id, "owner_id": "synthetic_replay", "source_kind": "synthetic_replay", "status": "queued"})
 
     # Run analysis pipeline
     _run_analysis(job_id, str(pcap_file))
 
     # Retrieve newly created session from MongoDB
     sessions_col = get_sessions_col()
-    hosts_col = get_hosts_col()
 
     session_doc = sessions_col.find_one(
-        {"pcap_source": scenario["pcap"]},
+        {"job_id": job_id, "org_id": org_id},
         sort=[("id", -1)],
     )
-
-    if not session_doc:
-        session_doc = sessions_col.find_one(sort=[("id", -1)])
 
     if not session_doc:
         raise RuntimeError("Failed to retrieve generated session from MongoDB")
 
     session_id = session_doc.get("id")
     host_id = session_doc.get("host_id")
-    host_doc = hosts_col.find_one({"id": host_id}) if host_id else None
     dst_ip = session_doc.get("dst_ip", "127.0.0.1")
 
     risk_data = session_doc.get("risk_score") or {}
@@ -96,6 +97,8 @@ async def simulate_live_session(scenario_id: str) -> dict[str, Any]:
 
     payload = {
         "event": "NEW_SESSION",
+        "org_id": org_id,
+        "source_kind": "synthetic_replay",
         "timestamp": datetime.now(UTC).isoformat(),
         "scenario": scenario["title"],
         "session_id": session_id,

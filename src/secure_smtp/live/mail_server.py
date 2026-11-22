@@ -164,6 +164,14 @@ def get_local_ip() -> str:
     return ip
 
 
+def _socket_handshake(session_id, version, cipher):
+    """A socket exposes version/cipher, not ClientHello fingerprints or key exchange."""
+    from secure_smtp.db.models import TLSHandshake
+
+    return TLSHandshake(session_id=session_id, tls_version_negotiated=version,
+                        cipher_suite_negotiated=cipher, visibility_limited=True)
+
+
 class LiveMailLab:
     """Manages multi-port async SMTP test servers with live socket session recording and telemetry."""
 
@@ -192,11 +200,10 @@ class LiveMailLab:
         """
         from secure_smtp.ai.explain import enrich_risk_score_with_explanation
         from secure_smtp.ai.features import build_feature_vector
-        from secure_smtp.ai.risk_model import RiskModel, compute_host_rollup
+        from secure_smtp.ai.risk_model import RiskModel
         from secure_smtp.api.main import get_connection_manager
         from secure_smtp.db.models import (
             Certificate,
-            KeyExchangeType,
             ProtocolType,
             Session,
             TLSHandshake,
@@ -206,6 +213,10 @@ class LiveMailLab:
         from secure_smtp.rules.engine import RuleEngine
 
         try:
+            from secure_smtp.config import get_settings
+            org_id = get_settings().pilot_org_id
+            if not org_id:
+                raise ValueError("Pilot organization required for lab records")
             # Normalize server IP to active LAN IP if bound to wildcard
             normalized_server_ip = server_ip
             if normalized_server_ip in ("0.0.0.0", "::", "127.0.0.1"):
@@ -215,11 +226,13 @@ class LiveMailLab:
             sessions_col = get_sessions_col()
 
             # Find or create Host in MongoDB
-            host_doc = hosts_col.find_one({"ip_or_hostname": normalized_server_ip})
+            host_doc = hosts_col.find_one({"ip_or_hostname": normalized_server_ip, "org_id": org_id})
             if not host_doc:
                 host_id = get_next_sequence("host_id")
                 host_data = {
                     "id": host_id,
+                    "org_id": org_id,
+                    "source_kind": "controlled_lab",
                     "ip_or_hostname": normalized_server_ip,
                     "session_count": 0,
                     "aggregate_risk_score": 0.0,
@@ -250,18 +263,7 @@ class LiveMailLab:
             certificates_models: list[Certificate] = []
 
             if tls_mode_enum != TLSMode.NONE and starttls_completed:
-                handshake_model = TLSHandshake(
-                    session_id=session.id,
-                    tls_version_negotiated=tls_version or "TLS1.3",
-                    cipher_suite_negotiated=cipher or "TLS_AES_256_GCM_SHA384",
-                    key_exchange_type=KeyExchangeType.ECDHE,
-                    forward_secrecy=True,
-                    ja3="771,4865-4866-4867,43-51-10-11,29-23-24,0",
-                    ja3s="771,4865,43-51",
-                    ja4="t13d1516h2_8daaf6152771_026269944d41",
-                    ja4s="t130200_1302_a56c5b999336",
-                    visibility_limited=False,
-                )
+                handshake_model = _socket_handshake(session.id, tls_version, cipher)
                 if cert_path and cert_path.exists():
                     cert_model = _parse_cert_to_model(cert_path)
                     certificates_models.append(cert_model)
@@ -284,7 +286,7 @@ class LiveMailLab:
             session.certificates = certificates_models
             session.findings = findings
             session.risk_score = risk_score
-            sessions_col.insert_one(session.model_dump())
+            sessions_col.insert_one({**session.model_dump(), "org_id": org_id, "owner_id": "controlled_lab", "source_kind": "controlled_lab"})
 
             # Update Host rollups
             try:
@@ -317,6 +319,8 @@ class LiveMailLab:
             tier_val = risk_score.tier.value if hasattr(risk_score.tier, "value") else str(risk_score.tier)
             payload = {
                 "event": "NEW_SESSION",
+                "org_id": org_id,
+                "source_kind": "controlled_lab",
                 "timestamp": datetime.now(UTC).isoformat(),
                 "scenario": scenario_label or f"Live SMTP Connection (Port {server_port})",
                 "session_id": session_id,
@@ -413,8 +417,8 @@ class LiveMailLab:
         ssl_ctx.load_cert_chain(str(valid_cert), str(valid_key))
 
         tls_completed = False
-        negotiated_version = "TLS1.3"
-        negotiated_cipher = "TLS_AES_256_GCM_SHA384"
+        negotiated_version = ""
+        negotiated_cipher = ""
 
         try:
             writer.write(b"220 test-modern.mail.local ESMTP SecureSMTP-ModernTLS\r\n")
@@ -436,12 +440,14 @@ class LiveMailLab:
                         protocol = transport.get_protocol()
                         loop = asyncio.get_running_loop()
                         new_transport = await loop.start_tls(transport, protocol, ssl_ctx, server_side=True)
+                        if new_transport is None:
+                            raise ConnectionError("TLS transport closed during negotiation")
                         writer._transport = new_transport
                         tls_completed = True
                         # Retrieve negotiated cipher info if available
                         ssl_object = new_transport.get_extra_info("ssl_object")
                         if ssl_object:
-                            negotiated_version = ssl_object.version() or "TLS1.3"
+                            negotiated_version = ssl_object.version() or ""
                             cipher_info = ssl_object.cipher()
                             if cipher_info:
                                 negotiated_cipher = cipher_info[0]
@@ -486,7 +492,7 @@ class LiveMailLab:
                 cert_path=valid_cert if tls_completed else None,
                 tls_version=negotiated_version,
                 cipher=negotiated_cipher,
-                scenario_label="Live Modern Hardened TLS 1.3 Baseline" if tls_completed else "Aborted STARTTLS Connection",
+                scenario_label="Controlled TLS connection" if tls_completed else "STARTTLS not completed",
             )
 
     async def _handle_vulnerable_tls(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
@@ -508,8 +514,8 @@ class LiveMailLab:
             logger.warning("Could not load expired cert chain: %s", cert_err)
 
         tls_completed = False
-        negotiated_version = "TLS1.2"
-        negotiated_cipher = "ECDHE-RSA-AES128-SHA"
+        negotiated_version = ""
+        negotiated_cipher = ""
 
         try:
             writer.write(b"220 test-vulnerable.mail.local ESMTP SecureSMTP-LegacyLab\r\n")
@@ -531,18 +537,18 @@ class LiveMailLab:
                         protocol = transport.get_protocol()
                         loop = asyncio.get_running_loop()
                         new_transport = await loop.start_tls(transport, protocol, ssl_ctx, server_side=True)
+                        if new_transport is None:
+                            raise ConnectionError("TLS transport closed during negotiation")
                         writer._transport = new_transport
                         tls_completed = True
                         ssl_object = new_transport.get_extra_info("ssl_object")
                         if ssl_object:
-                            negotiated_version = ssl_object.version() or "TLS1.2"
+                            negotiated_version = ssl_object.version() or ""
                             cipher_info = ssl_object.cipher()
                             if cipher_info:
                                 negotiated_cipher = cipher_info[0]
                     except Exception as tls_err:
                         logger.debug("Vulnerable TLS negotiation error: %s", tls_err)
-                        # Mark as completed attempt with expired cert so it gets flagged
-                        tls_completed = True
                         break
                 elif cmd.startswith("MAIL FROM:") or cmd.startswith("RCPT TO:"):
                     writer.write(b"250 2.1.0 Ok\r\n")
@@ -576,13 +582,13 @@ class LiveMailLab:
                 client_port=client_port,
                 server_ip=server_ip,
                 server_port=server_port,
-                tls_mode="starttls",
+                tls_mode="starttls" if tls_completed else "none",
                 starttls_advertised=True,
-                starttls_completed=True,
-                cert_path=expired_cert,
+                starttls_completed=tls_completed,
+                cert_path=expired_cert if tls_completed else None,
                 tls_version=negotiated_version,
                 cipher=negotiated_cipher,
-                scenario_label="Live Expired Certificate & Weak RSA-1024",
+                scenario_label="Controlled legacy TLS connection" if tls_completed else "STARTTLS not completed",
             )
 
     async def _handle_stripping_attack(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):

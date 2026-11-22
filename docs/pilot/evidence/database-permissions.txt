@@ -1,0 +1,1 @@
+Passed application database CRUD/index creation; foreign database and user administration denied.

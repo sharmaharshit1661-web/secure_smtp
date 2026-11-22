@@ -12,7 +12,7 @@ import hmac
 import json
 import logging
 from datetime import UTC, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import httpx
 
@@ -31,11 +31,11 @@ class AlertEngine:
 
     def __init__(
         self,
-        webhook_url: Optional[str] = None,
-        secret: Optional[str] = None,
-        min_severity: Optional[str] = None,
-        risk_threshold: Optional[float] = None,
-        enabled: Optional[bool] = None,
+        webhook_url: str | None = None,
+        secret: str | None = None,
+        min_severity: str | None = None,
+        risk_threshold: float | None = None,
+        enabled: bool | None = None,
     ):
         settings = get_settings()
         self.webhook_url = webhook_url or settings.alert_webhook_url
@@ -44,7 +44,7 @@ class AlertEngine:
         self.risk_threshold = settings.alert_risk_threshold if risk_threshold is None else risk_threshold
         self.enabled = enabled if enabled is not None else (settings.alerts_enabled and bool(self.webhook_url))
 
-    def should_alert(self, findings: List[Dict[str, Any]], risk_score: float) -> bool:
+    def should_alert(self, findings: list[dict[str, Any]], risk_score: float) -> bool:
         """Determine whether the findings or risk score meet the alert threshold."""
         if not self.enabled or not self.webhook_url:
             return False
@@ -67,9 +67,9 @@ class AlertEngine:
         server_ip: str,
         protocol: str,
         risk_score: float,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
         pcap_source: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Construct standard JSON webhook payload."""
         timestamp = datetime.now(UTC).isoformat()
         critical_findings = [
@@ -128,8 +128,9 @@ class AlertEngine:
         server_ip: str,
         protocol: str,
         risk_score: float,
-        findings: List[Dict[str, Any]],
+        findings: list[dict[str, Any]],
         pcap_source: str = "",
+        delivery_id: str = "",
     ) -> bool:
         """Synchronously or background-dispatch alert with timeout."""
         if not self.should_alert(findings, risk_score):
@@ -141,6 +142,8 @@ class AlertEngine:
         body_bytes = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json", "User-Agent": "SecureSMTP-AlertBot/1.0"}
 
+        if delivery_id:
+            headers["X-SecureSMTP-Delivery-ID"] = delivery_id
         sig = self.sign_payload(body_bytes)
         if sig:
             headers["X-SecureSMTP-Signature"] = sig
@@ -149,10 +152,10 @@ class AlertEngine:
             with httpx.Client(timeout=5.0) as client:
                 res = client.post(self.webhook_url, content=body_bytes, headers=headers)
                 if res.is_success:
-                    logger.info("Security alert dispatched (HTTP %d)", res.status_code)
+                    logger.info("Security alert delivered (status: %d)", res.status_code)
                     return True
                 else:
-                    logger.warning("Webhook dispatch failed with HTTP %d: %s", res.status_code, res.text[:200])
+                    logger.warning("Webhook delivery failed (status: %d)", res.status_code)
                     return False
         except Exception as e:
             logger.error("Webhook delivery failed (%s)", type(e).__name__)
@@ -165,7 +168,7 @@ def dispatch_alert(
     server_ip: str,
     protocol: str,
     risk_score: float,
-    findings: List[Dict[str, Any]],
+    findings: list[dict[str, Any]],
     pcap_source: str = "",
 ) -> bool:
     """Convenience helper to evaluate and dispatch alert using global settings."""

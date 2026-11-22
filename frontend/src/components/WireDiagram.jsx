@@ -1,24 +1,13 @@
 import SeverityBadge from './SeverityBadge';
 
 export default function WireDiagram({ session }) {
-  const isStarttls = String(session.tls_mode).toLowerCase() === 'starttls';
-  const isStripped = isStarttls && !session.starttls_completed;
-  const proto = String(session.protocol).toUpperCase();
-  const tlsMode = String(session.tls_mode).toUpperCase();
-
-  let tlsBadge;
-  if (isStripped) {
-    tlsBadge = <SeverityBadge severity="critical" />;
-  } else if (session.tls_mode !== 'none') {
-    tlsBadge = <SeverityBadge severity="clean" />;
-  } else {
-    tlsBadge = <SeverityBadge severity="critical" />;
-  }
-
-  let statusLabel;
-  if (isStripped) statusLabel = 'STARTTLS Stripped';
-  else if (session.tls_mode !== 'none') statusLabel = `${tlsMode} TLS`;
-  else statusLabel = 'Plaintext';
+  const mode = String(session.tls_mode || '').toLowerCase();
+  const stripped = (session.findings || []).some(finding => finding.rule_id === 'starttls-stripped');
+  const incomplete = mode === 'starttls' && session.starttls_completed === false;
+  const encrypted = ['tls', 'implicit_tls'].includes(mode) || (mode === 'starttls' && session.starttls_completed === true);
+  const proto = String(session.protocol || 'Unknown protocol').toUpperCase();
+  const statusLabel = stripped ? 'STARTTLS stripping detected' : incomplete ? 'STARTTLS incomplete' : encrypted ? (mode === 'starttls' ? 'STARTTLS completed' : 'TLS connection') : mode === 'none' ? 'Plaintext' : 'Transport unknown';
+  const tlsBadge = <SeverityBadge severity={stripped ? 'critical' : incomplete || mode === 'none' ? 'high' : 'info'} />;
 
   return (
     <div className="wire-diagram">
@@ -30,10 +19,10 @@ export default function WireDiagram({ session }) {
         <div className="wire-protocol">
           <span>{proto}</span>
           {tlsBadge}
-          <span style={{ color: isStripped ? 'var(--sev-critical)' : 'var(--accent)' }}>{statusLabel}</span>
+          <span style={{ color: stripped ? 'var(--sev-critical)' : 'var(--text-secondary)' }}>{statusLabel}</span>
         </div>
         <div className="wire-line" />
-        <div className="wire-pcap">Source: {session.pcap_source || 'Live Feed'}</div>
+        <div className="wire-pcap">Source: {session.pcap_source || 'Not recorded'}</div>
       </div>
       <div className="wire-endpoint">
         <div className="wire-endpoint-label">Destination Server</div>

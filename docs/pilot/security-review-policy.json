@@ -1,0 +1,16 @@
+{
+  "planning": "deep",
+  "context_depth": "dependency",
+  "verification_depth": "impact",
+  "delegation": "none",
+  "reason_codes": [
+    "authentication-boundaries",
+    "offline-live-connectivity",
+    "retry-recovery",
+    "request-resource-limits",
+    "dependency-vulnerabilities",
+    "database-least-privilege",
+    "lab-evidence-accuracy"
+  ],
+  "decision": "Fix reproducible local failures and add regression evidence. Rehearse only against disposable local services. Record service-dependent and operational gaps explicitly."
+}

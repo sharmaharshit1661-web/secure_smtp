@@ -5,15 +5,14 @@ and health status reporting.
 
 from __future__ import annotations
 
-import os
-from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from secure_smtp.api.main import app
 from secure_smtp.db.mongodb import (
     build_mongo_uri,
-    get_active_mongo_uri,
     get_masked_mongo_uri,
     get_mongo_auth_status,
 )
@@ -77,8 +76,12 @@ def test_get_masked_mongo_uri_unauthenticated():
     assert masked == "mongodb://localhost:27017/secure_smtp"
 
 
-def test_get_mongo_auth_status_structure():
+def test_get_mongo_auth_status_structure(monkeypatch):
     """Verify get_mongo_auth_status returns expected keys and types."""
+    from secure_smtp.db import mongodb
+    fake_client = MagicMock()
+    fake_client.admin.command.return_value = {"ok": 1.0}
+    monkeypatch.setattr(mongodb, "get_mongo_client", lambda: fake_client)
     status = get_mongo_auth_status()
     assert "status" in status
     assert "database" in status
@@ -89,14 +92,32 @@ def test_get_mongo_auth_status_structure():
         assert ":******@" in status["uri_masked"]
 
 
-def test_health_endpoint_reports_auth_posture():
-    """Verify /api/health reports system-wide API and MongoDB auth posture."""
-    client = TestClient(app)
-    response = client.get("/api/health")
+def test_health_endpoint_does_not_expose_database_or_identity_details(monkeypatch):
+    from secure_smtp.api.routers import system
+    monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {
+        "status": "connected", "uri_masked": "mongodb://internal", "authenticated_user": "secret-user",
+    })
+    monkeypatch.setattr(system, "get_settings", lambda: SimpleNamespace(
+        clerk_issuer="https://identity.example.test", pilot_org_id="org_pilot",
+        clerk_authorized_parties=["https://pilot.example.test"],
+    ))
+    response = TestClient(app).get("/api/health")
     assert response.status_code == 200
-    data = response.json()
+    assert response.json() == {"status": "healthy", "service": "secure-smtp"}
 
-    assert data["service"] == "secure-smtp"
-    assert "auth" not in data
-    assert "uri_masked" not in data["database"]
-    assert data["database"]["status"] in ("connected", "degraded", "disconnected")
+
+def test_health_endpoint_signals_database_failure(monkeypatch):
+    from secure_smtp.api.routers import system
+    monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {"status": "disconnected"})
+    response = TestClient(app).get("/api/health")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Service not ready"}
+
+
+def test_health_endpoint_signals_unconfigured_identity(monkeypatch):
+    from secure_smtp.api.routers import system
+    monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {"status": "connected"})
+    monkeypatch.setattr(system, "get_settings", lambda: SimpleNamespace(
+        clerk_issuer="", pilot_org_id="", clerk_authorized_parties=[],
+    ))
+    assert TestClient(app).get("/api/health").status_code == 503

@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +24,7 @@ class ProtocolType(str, Enum):
 
 
 class TLSMode(str, Enum):
+    UNKNOWN = "unknown"
     IMPLICIT = "implicit"
     STARTTLS = "starttls"
     NONE = "none"
@@ -87,7 +87,7 @@ class TLSHandshake(BaseModel):
     tls_version_negotiated: str = ""
     cipher_suite_negotiated: str = ""
     key_exchange_type: KeyExchangeType = KeyExchangeType.UNKNOWN
-    forward_secrecy: bool = False
+    forward_secrecy: bool | None = None
 
     ja3: str = ""
     ja3s: str = ""
@@ -133,8 +133,8 @@ class Certificate(BaseModel):
     public_key_algorithm: str = ""
     key_length_bits: int = 0
     signature_algorithm: str = ""
-    self_signed: bool = False
-    chain_valid: bool = True
+    self_signed: bool | None = None
+    chain_valid: bool | None = None
 
     @property
     def san_list(self) -> list[str]:
@@ -200,7 +200,6 @@ class Session(BaseModel):
     """A single email protocol session extracted from the PCAP."""
 
     id: int | None = None
-    job_id: str = ""
     pcap_source: str = ""
     src_ip: str = ""
     dst_ip: str = ""
@@ -215,11 +214,11 @@ class Session(BaseModel):
     host_id: int | None = None
 
     # Embedded Documents for MongoDB
-    handshake: Optional[TLSHandshake] = None
+    handshake: TLSHandshake | None = None
     certificates: list[Certificate] = Field(default_factory=list)
     findings: list[Finding] = Field(default_factory=list)
-    risk_score: Optional[RiskScore] = None
-    anomaly_score: Optional[AnomalyScore] = None
+    risk_score: RiskScore | None = None
+    anomaly_score: AnomalyScore | None = None
 
 
 class AnalysisJob(BaseModel):

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useId } from 'react';
 import Icon from './Icon';
 import { formatDate } from '../utils/format';
 
@@ -7,7 +7,7 @@ export default function CertChain({ certificates = [] }) {
     return (
       <div className="empty-state">
         <div className="empty-state-icon"><Icon name="certificate" size={24} /></div>
-        <p>No X.509 certificates exchanged (plaintext or TLS 1.3 encrypted handshake).</p>
+        <p>No certificates were captured. TLS 1.3 encrypts the certificate exchange, so passive captures may not expose it.</p>
       </div>
     );
   }
@@ -23,10 +23,11 @@ export default function CertChain({ certificates = [] }) {
 
 function CertNode({ cert, defaultOpen }) {
   const [open, setOpen] = useState(defaultOpen);
+  const panelId = useId();
 
   return (
     <div className="expander">
-      <button className="expander-trigger" onClick={() => setOpen(!open)}>
+      <button className="expander-trigger" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
           <Icon name="certificate" size={15} style={{ color: 'var(--accent)' }} />
           Certificate [{cert.chain_position}] — {cert.subject?.slice(0, 50)}
@@ -36,7 +37,7 @@ function CertNode({ cert, defaultOpen }) {
         </span>
       </button>
       {open && (
-        <div className="expander-content">
+        <div className="expander-content" id={panelId}>
           <div className="info-grid">
             <div>
               <div className="info-item-label">Subject</div>
@@ -65,16 +66,16 @@ function CertNode({ cert, defaultOpen }) {
             <div>
               <div className="info-item-label">Self-Signed</div>
               <div className="info-item-value">
-                {cert.self_signed
-                  ? <span className="text-critical font-semibold">Self-signed — untrusted</span>
-                  : <span className="text-clean font-semibold">Issuer declared</span>}
+                {cert.self_signed == null ? <span className="text-secondary">Unknown</span> : cert.self_signed
+                  ? <span className="text-critical font-semibold">Self-signed</span>
+                  : <span className="text-clean font-semibold">CA-issued</span>}
               </div>
             </div>
             <div>
-              <div className="info-item-label">Observed chain checks</div>
+              <div className="info-item-label">Chain Valid</div>
               <div className="info-item-value">
-                {cert.chain_valid
-                  ? <span className="text-clean font-semibold">No failure observed; trust not verified</span>
+                {cert.chain_valid == null ? <span className="text-secondary">Not validated</span> : cert.chain_valid
+                  ? <span className="text-clean font-semibold">Valid</span>
                   : <span className="text-critical font-semibold">Invalid</span>}
               </div>
             </div>

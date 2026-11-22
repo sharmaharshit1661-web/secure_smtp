@@ -17,6 +17,7 @@ dependencies = [
     # Stage 1-3: PCAP parsing, TCP reassembly, TLS/cert parsing
     "scapy>=2.5.0",
     "cryptography>=41.0",
+    "PyJWT[crypto]>=2.10,<3",
 
     # Stage 4: Rule engine
     "pyyaml>=6.0",
@@ -38,24 +39,28 @@ dependencies = [
 
     # Database
     "pymongo>=4.18.3",
-
-    # Security floors for transitive PDF, HTTP and DNS dependencies
-    "Brotli>=1.2.1",
-    "certifi>=2026.10.18",
-    "dnspython>=2.9.2",
-    "Pillow>=13.0.0",
-    "urllib3>=2.8.0",
+    "neo4j>=5.26,<7",
 
     # Utilities
     "httpx>=0.25",
-    "PyJWT[crypto]>=2.10,<3",
     "plotly>=5.18",
     "pydantic-settings>=2.0.0",
+
+    # Security floors for transitive dependencies (audited 2026-11-22).
+    "brotli>=1.2.1",
+    "certifi>=2026.10.18",
+    "dnspython>=2.9.2",
+    "pillow>=13.0.0",
+    "urllib3>=2.8.0",
 ]
+
+[project.scripts]
+secure-smtp-agent = "secure_smtp.agent.runner:main"
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4",
+    "mongomock>=4.3",
     "pytest-asyncio>=0.21",
     "ruff>=0.1",
 ]

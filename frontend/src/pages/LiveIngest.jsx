@@ -1,60 +1,106 @@
+import { usePilot } from '../context/PilotContext';
+import useClipboard from '../hooks/useClipboard';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   uploadPcap,
+  getAnalysisStatus,
   downloadReport,
+  getAccessToken,
+  getLiveSocketUrl,
   getLiveStatus,
+  getSessions,
   clearLiveHistory,
-  getLiveWebSocketUrl,
 } from '../api/client';
 import { formatBytes } from '../utils/format';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
+import Notice from '../components/Notice';
+import { getTierColor, getTierFromScore } from '../utils/colors';
+import { riskValue, validateCapture } from '../utils/telemetry';
+import { waitForAnalysis } from '../utils/analysis';
 
 export default function LiveIngest() {
+  const { canUseLab } = usePilot();
+  const { copyText, clipboardError } = useClipboard();
   const navigate = useNavigate();
   const fileInputRef = useRef(null);
+  const analysisController = useRef(null);
+  const [pendingJobId, setPendingJobId] = useState('');
+  useEffect(() => () => analysisController.current?.abort(), []);
 
   const [dragOver, setDragOver] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
-  const [resultJobId, setResultJobId] = useState(localStorage.getItem('sms_latest_job_id') || '');
+  const [resultJobId, setResultJobId] = useState('');
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
   const [liveSessions, setLiveSessions] = useState([]);
   const [labStatus, setLabStatus] = useState(null);
+  const [statusError, setStatusError] = useState('');
+  const [statusRetry, setStatusRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (!canUseLab) return;
+    getLiveStatus().then(status => { if (active) { setLabStatus(status); setStatusError(''); } }).catch(() => { if (active) setStatusError('Listener status is unavailable. Check the API connection.'); });
+    return () => { active = false; };
+  }, [statusRetry, canUseLab]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let saved;
+    try { saved = localStorage.getItem('sms_latest_job_id'); } catch { return; }
+    if (saved) getAnalysisStatus(saved, { signal: controller.signal }).then(job => {
+      if (!controller.signal.aborted && job.status === 'done') setResultJobId(saved);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, []);
   const [showRemoteGuide, setShowRemoteGuide] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [copiedSnippet, setCopiedSnippet] = useState('');
 
   useEffect(() => {
-    getLiveStatus()
-      .then(setLabStatus)
-      .catch(() => {});
-
-    const statusTimer = setInterval(() => {
-      getLiveStatus().then(setLabStatus).catch(() => setLabStatus(null));
-    }, 10000);
-    let disposed = false;
+    const wsUrl = getLiveSocketUrl();
     let ws;
     let timer;
+    let disposed = false;
 
-    async function connectWs() {
+    let refreshId = 0;
+    async function refreshSessions() {
+      const id = ++refreshId;
       try {
-        const wsUrl = await getLiveWebSocketUrl();
-        if (disposed) return;
+        const sessions = await getSessions(30);
+        if (!disposed && id === refreshId) {
+          setLiveSessions(sessions.map(session => ({...session, session_id: session.id})));
+          setStatusError('');
+        }
+      } catch (failure) {
+        if (!disposed) setStatusError('Recent sessions may be stale. ' + failure.message);
+      }
+    }
+    function connectWs() {
+      if (disposed) return;
+      try {
         ws = new WebSocket(wsUrl);
-        ws.onopen = () => {
-          setWsConnected(true);
+        ws.onopen = async () => {
+          try {
+            const token = await getAccessToken();
+            if (!disposed && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ token }));
+          } catch { ws.close(); }
         };
         ws.onmessage = (evt) => {
           try {
             const data = JSON.parse(evt.data);
-            if (data.event === 'NEW_SESSION') {
+            if (data.event === 'AUTHENTICATED') {
+              setWsConnected(true);
+              refreshSessions();
+            } else if (data.event === 'ASSESSMENT_UPDATED') {
+              refreshSessions();
+            } else if (data.event === 'NEW_SESSION') {
               setLiveSessions((prev) => [data, ...prev.slice(0, 29)]);
             } else if (data.event === 'DATABASE_RESET') {
-              setLiveSessions([]);
+              refreshSessions();
             }
           } catch {}
         };
@@ -74,62 +120,78 @@ export default function LiveIngest() {
 
     return () => {
       disposed = true;
-      clearInterval(statusTimer);
       if (timer) clearTimeout(timer);
       if (ws) ws.close();
     };
   }, []);
 
-  const handleFileDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      const file = e.dataTransfer.files[0];
-      setSelectedFile(file);
-      setError(null);
-    }
-  };
-
-  const handleFileSelect = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setSelectedFile(e.target.files[0]);
-      setError(null);
-    }
-  };
-
-  const handleUpload = async (fileToUpload) => {
-    const file = fileToUpload || selectedFile;
-    if (!file) return;
-
-    setUploading(true);
-    setError(null);
+  const selectCapture = (file) => {
+    if (uploading) return;
+    const validation = validateCapture(file);
+    setError(validation || null);
     setSuccessMsg(null);
-    setUploadProgress('Reassembling TCP streams & vectorizing cryptographic handshakes…');
-
+    setSelectedFile(validation ? null : file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const handleFileDrop = (event) => {
+    event.preventDefault();
+    setDragOver(false);
+    if (event.dataTransfer.files?.[0]) selectCapture(event.dataTransfer.files[0]);
+  };
+  const handleFileSelect = (event) => {
+    if (event.target.files?.[0]) selectCapture(event.target.files[0]);
+  };
+  const finishAnalysis = async (jobId, signal) => {
+    await waitForAnalysis(jobId, {
+      getStatus: getAnalysisStatus, signal,
+      onStatus: status => setUploadProgress(status === 'queued' ? 'Capture queued for analysis…' : 'Analyzing sessions and certificates…'),
+    });
+    setResultJobId(jobId);
+    setPendingJobId('');
+    try { localStorage.setItem('sms_latest_job_id', jobId); } catch { /* Reports remain available for this visit. */ }
+    setSuccessMsg('Analysis complete. Sessions and reports are ready to inspect.');
+    setSelectedFile(null);
+  };
+  const handleUpload = async () => {
+    if (!selectedFile || uploading) return;
+    const validation = validateCapture(selectedFile);
+    if (validation) { setError(validation); return; }
+    analysisController.current?.abort();
+    const controller = new AbortController();
+    analysisController.current = controller;
+    setUploading(true); setError(null); setSuccessMsg(null);
+    setUploadProgress('Uploading capture…');
     try {
-      const res = await uploadPcap(file);
-      const jobId = res.job_id || 'audit_completed';
-      setResultJobId(jobId);
-      localStorage.setItem('sms_latest_job_id', jobId);
-      setSuccessMsg(`PCAP trace "${file.name}" ingested successfully! Cryptographic posture updated.`);
-      setSelectedFile(null);
+      const result = await uploadPcap(selectedFile);
+      if (controller.signal.aborted) return;
+      if (!result.job_id) throw new Error('The server did not return an analysis job. Try uploading again.');
+      setPendingJobId(result.job_id);
+      await finishAnalysis(result.job_id, controller.signal);
     } catch (err) {
-      console.error('Ingestion error:', err);
-      setError(err.message || 'PCAP analysis failed.');
+      if (!controller.signal.aborted) setError(err.message || 'Capture analysis failed.');
     } finally {
-      setUploading(false);
-      setUploadProgress('');
+      if (!controller.signal.aborted) { setUploading(false); setUploadProgress(''); }
     }
+  };
+  const checkPendingAnalysis = async () => {
+    if (!pendingJobId || uploading) return;
+    const controller = new AbortController();
+    analysisController.current = controller;
+    setUploading(true); setError(null);
+    try { await finishAnalysis(pendingJobId, controller.signal); }
+    catch (err) { if (!controller.signal.aborted) setError(err.message); }
+    finally { if (!controller.signal.aborted) { setUploading(false); setUploadProgress(''); } }
   };
 
   const handleClearHistory = async () => {
-    if (!window.confirm('Reset database? This clears all captured sessions to restore a clean baseline.')) return;
+    if (!window.confirm('Clear the controlled mail lab’s session history?')) return;
     setClearing(true);
     setError(null);
     try {
       await clearLiveHistory();
-      setLiveSessions([]);
-      setSuccessMsg('Session buffer cleared! Telemetry engine re-established at zero baseline.');
+      const sessions = await getSessions(30);
+      setLiveSessions(sessions.map(session => ({...session, session_id: session.id})));
+      setSuccessMsg('Controlled lab history cleared.');
     } catch (err) {
       setError(err.message || 'Failed to clear history');
     } finally {
@@ -138,14 +200,10 @@ export default function LiveIngest() {
   };
 
   const copyToClipboard = (text, id) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedSnippet(id);
-      setTimeout(() => setCopiedSnippet(''), 2000);
-    }
+    copyText(text, () => { setCopiedSnippet(id); setTimeout(() => setCopiedSnippet(''), 2000); });
   };
 
-  const lanIp = labStatus?.lan_ip || 'Unavailable';
+  const lanIp = labStatus?.lan_ip || window.location.hostname;
 
   const PORT_LISTENERS = [
     {
@@ -155,12 +213,12 @@ export default function LiveIngest() {
       desc: 'Unencrypted SMTP transmission with zero TLS negotiation',
       severity: 'high',
       riskTier: 'HIGH RISK',
-      accentColor: '#F97316',
+      accentColor: 'var(--sev-high)',
       accentBg: 'rgba(249, 115, 22, 0.08)',
       accentBorder: 'rgba(249, 115, 22, 0.3)',
       riskBg: 'rgba(249, 115, 22, 0.1)',
       riskBorder: 'rgba(249, 115, 22, 0.3)',
-      riskColor: '#F97316',
+      riskColor: 'var(--sev-high)',
     },
     {
       port: 2526,
@@ -169,12 +227,12 @@ export default function LiveIngest() {
       desc: 'Authenticated AEAD cipher suite with Perfect Forward Secrecy',
       severity: 'clean',
       riskTier: 'PRISTINE (0)',
-      accentColor: '#10B981',
+      accentColor: 'var(--accent)',
       accentBg: 'rgba(16, 185, 129, 0.08)',
       accentBorder: 'rgba(16, 185, 129, 0.3)',
       riskBg: 'rgba(16, 185, 129, 0.1)',
       riskBorder: 'rgba(16, 185, 129, 0.3)',
-      riskColor: '#10B981',
+      riskColor: 'var(--accent)',
     },
     {
       port: 2527,
@@ -183,12 +241,12 @@ export default function LiveIngest() {
       desc: 'Simulated certificate expiration and legacy 1024-bit RSA cipher',
       severity: 'medium',
       riskTier: 'MEDIUM RISK',
-      accentColor: '#F59E0B',
+      accentColor: 'var(--sev-medium)',
       accentBg: 'rgba(245, 158, 11, 0.08)',
       accentBorder: 'rgba(245, 158, 11, 0.3)',
       riskBg: 'rgba(245, 158, 11, 0.1)',
       riskBorder: 'rgba(245, 158, 11, 0.3)',
-      riskColor: '#F59E0B',
+      riskColor: 'var(--sev-medium)',
     },
     {
       port: 2528,
@@ -197,605 +255,65 @@ export default function LiveIngest() {
       desc: 'Simulated adversary intercepting and stripping 250-STARTTLS',
       severity: 'critical',
       riskTier: 'CRITICAL RISK',
-      accentColor: '#EF4444',
+      accentColor: 'var(--sev-critical)',
       accentBg: 'rgba(239, 68, 68, 0.08)',
       accentBorder: 'rgba(239, 68, 68, 0.3)',
       riskBg: 'rgba(239, 68, 68, 0.1)',
       riskBorder: 'rgba(239, 68, 68, 0.3)',
-      riskColor: '#EF4444',
+      riskColor: 'var(--sev-critical)',
     },
   ];
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto">
-      {/* ── EXECUTIVE HEADER ─────────────────────────────────────────────────── */}
-      <div className="flex justify-between items-start flex-wrap gap-4 pb-3 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
-        <div>
-          <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-xl font-bold tracking-tight" style={{ color: '#E8E8EC' }}>
-              Live Ingest &amp; Telemetry Studio
-            </h1>
-            <span className="live-surveillance-chip">
-              <span className="live-surveillance-dot" />
-              <span>{wsConnected ? 'Telemetry connected' : 'Telemetry disconnected'}</span>
-            </span>
+    <div className="simple-page">
+      <header className="simple-heading">
+        <div><h1>Capture &amp; live sessions</h1><p>Upload a capture or watch incoming test traffic.</p></div>
+        {canUseLab && <button className="btn btn-outline" onClick={() => setShowRemoteGuide(true)}>Connection guide</button>}
+      </header>
+      {clipboardError && <Notice>{clipboardError}</Notice>}
+      {statusError && <Notice onRetry={() => setStatusRetry(value => value + 1)}>{statusError}</Notice>}
+      {error && <Notice>{error}</Notice>}
+      {successMsg && <Notice tone="info">{successMsg}</Notice>}
+      {pendingJobId && !uploading && <Notice tone="info" onRetry={checkPendingAnalysis}>Analysis pending. Check its status.</Notice>}
+      <div className="simple-columns">
+        <section className="card simple-stack">
+          <h2>Upload capture</h2>
+          <input type="file" ref={fileInputRef} hidden accept=".pcap,.pcapng" aria-label="Choose packet capture" disabled={uploading} onChange={handleFileSelect} />
+          {!selectedFile ? <button
+            type="button" className={`ingest-dropzone ${dragOver ? 'drag-over' : ''}`} disabled={uploading}
+            onDragOver={event => { event.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)}
+            onDrop={handleFileDrop} onClick={() => fileInputRef.current?.click()}
+          ><Icon name="upload" size={24} /><strong>Drop a capture or browse</strong><span className="text-secondary text-sm">PCAP or PCAPNG · up to 25 MB</span></button> : <div className="simple-stack">
+            <div className="simple-row"><div className="capture-filename"><strong>{selectedFile.name}</strong><small>{formatBytes(selectedFile.size)}</small></div><button className="btn btn-outline" disabled={uploading} onClick={() => setSelectedFile(null)}>Remove</button></div>
+            <button className="btn btn-primary" disabled={uploading} onClick={handleUpload}>{uploading ? 'Analyzing…' : 'Analyze capture'}</button>
+          </div>}
+          {uploading && <p role="status" className="text-secondary text-sm">{uploadProgress || 'Checking analysis…'}</p>}
+          <div className="simple-divider simple-stack">
+            <div className="simple-row"><h2>Reports</h2>{resultJobId && <button className="text-action" onClick={() => navigate('/dashboard/sessions')}>View sessions →</button>}</div>
+            {resultJobId ? <div className="ui-toolbar">{['pdf', 'html', 'json'].map(format => <button className="btn btn-outline" onClick={() => downloadReport(resultJobId, format).catch(error => setError(error.message))} key={format}><Icon name="download" size={14} />{format.toUpperCase()}</button>)}</div> : <p className="text-secondary text-sm">Available after your first completed analysis.</p>}
           </div>
-          <p className="text-secondary text-sm">
-            Passive socket interception, cryptographic handshake vectorization, and offline PCAP trace analysis.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* LAN Endpoint Chip */}
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-md"
-            style={{
-              background: 'rgba(255, 255, 255, 0.03)',
-              border: '1px solid var(--border)',
-              fontFamily: 'var(--font-mono)',
-              fontSize: '12px',
-            }}
-          >
-            <span className="text-secondary">Host LAN:</span>
-            <span className="text-accent font-bold">{lanIp}</span>
-            <button
-              type="button"
-              onClick={() => copyToClipboard(lanIp, 'ip')}
-              title="Copy Server IP"
-              style={{ color: copiedSnippet === 'ip' ? 'var(--accent)' : 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', background: 'none', border: 'none' }}
-            >
-              <Icon name={copiedSnippet === 'ip' ? 'check' : 'copy'} size={13} />
-            </button>
-          </div>
-
-          <button
-            type="button"
-            className="btn btn-outline btn-sm"
-            onClick={() => setShowRemoteGuide(true)}
-          >
-            <Icon name="terminal" size={14} />
-            Connection Directives
-          </button>
-        </div>
+        </section>
+        <section className="card simple-stack">
+          <div className="simple-row"><h2>Live sessions</h2><span className="text-sm text-secondary">{wsConnected ? 'Connected' : 'Reconnecting…'}</span></div>
+          {liveSessions.length ? <>
+            <div className="live-session-list">{liveSessions.map((session, index) => <div className="simple-row live-session-row" key={`${session.session_id}-${index}`}>
+              <div><strong>Session #{session.session_id}</strong><small>{session.src_ip} → {session.dst_ip}</small></div>
+              <span className="live-risk" style={{ color: getTierColor(riskValue(session.risk_score) == null ? 'info' : getTierFromScore(session.risk_score)) }}>{riskValue(session.risk_score) ?? '—'}<small>/100</small></span>
+              <button className="btn btn-outline" onClick={() => navigate(`/dashboard/sessions/${session.host_id || ''}?session=${session.session_id}`)}>Inspect</button>
+            </div>)}</div>
+            <button className="text-action" onClick={() => setLiveSessions([])}>Clear feed</button>
+          </> : <div className="simple-empty"><p>No new sessions yet.</p><button className="btn btn-outline" onClick={() => navigate('/dashboard/operations')}>View monitoring agents</button></div>}
+          {canUseLab && <details className="simple-details">
+            <summary>Listener setup <span>{labStatus?.is_running ? 'Running' : labStatus ? 'Stopped' : 'Unavailable'}</span></summary>
+            <div className="simple-stack"><div className="simple-row"><code>{lanIp}</code><button className="text-action" onClick={() => copyToClipboard(lanIp, 'address')}>{copiedSnippet === 'address' ? 'Copied' : 'Copy address'}</button></div>
+              <dl className="simple-definition-list">{PORT_LISTENERS.map(listener => <div key={listener.port}><dt>{listener.label}</dt><dd>{listener.port}</dd></div>)}</dl>
+            </div>
+          </details>}
+        </section>
       </div>
-
-      {/* ── NOTIFICATIONS ────────────────────────────────────────────────────── */}
-      {error && (
-        <div
-          className="card p-4 flex items-center justify-between gap-3"
-          style={{
-            borderColor: 'var(--sev-critical)',
-            backgroundColor: 'rgba(239, 68, 68, 0.08)',
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <span style={{ color: 'var(--sev-critical)' }}>
-              <Icon name="alert" size={18} />
-            </span>
-            <div>
-              <div className="text-xs font-bold font-mono" style={{ color: 'var(--sev-critical)' }}>
-                [INGESTION_ERROR]
-              </div>
-              <div className="text-xs text-primary mt-0.5">{error}</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn-sm btn-outline"
-            onClick={() => setError(null)}
-            style={{ padding: '4px 10px', fontSize: '11px' }}
-          >
-            Dismiss
-          </button>
-        </div>
-      )}
-
-      {successMsg && (
-        <div
-          className="card p-4 flex items-center justify-between flex-wrap gap-3"
-          style={{
-            borderColor: 'var(--sev-clean)',
-            backgroundColor: 'rgba(16, 185, 129, 0.08)',
-          }}
-        >
-          <div className="flex items-center gap-3">
-            <span style={{ color: 'var(--sev-clean)' }}>
-              <Icon name="check" size={18} />
-            </span>
-            <div>
-              <div className="text-xs font-bold font-mono" style={{ color: 'var(--sev-clean)' }}>
-                [TELEMETRY_UPDATED]
-              </div>
-              <div className="text-xs text-primary mt-0.5">{successMsg}</div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              onClick={() => navigate('/dashboard')}
-              style={{ fontSize: '12px', padding: '5px 14px' }}
-            >
-              Fleet Overview →
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={() => navigate('/sessions')}
-              style={{ fontSize: '12px', padding: '5px 14px' }}
-            >
-              Inspect Sessions →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ── MAIN 2-COLUMN WORKSPACE ──────────────────────────────────────────── */}
-      <div className="grid grid-2 gap-6 items-start">
-        {/* ── LEFT COLUMN: PCAP DROPZONE & EXECUTIVE AUDIT ────────────────────── */}
-        <div className="flex flex-col gap-6">
-          {/* Card 1: Packet Capture Dissection */}
-          <div className="card p-5">
-            <div className="flex justify-between items-start mb-2">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon name="upload" size={15} />
-                  <h2 className="text-sm font-semibold" style={{ color: '#E8E8EC' }}>
-                    Packet Capture Ingestion
-                  </h2>
-                </div>
-                <p className="text-secondary text-xs">
-                  Offline cryptographic extraction. 100% offline dissection with zero mail payload decrypted.
-                </p>
-              </div>
-              <span className="badge" style={{ fontSize: '10px', fontFamily: 'var(--font-mono)' }}>
-                OFFLINE_ANALYSIS
-              </span>
-            </div>
-
-            <input
-              type="file"
-              ref={fileInputRef}
-              style={{ display: 'none' }}
-              accept=".pcap,.pcapng"
-              onChange={handleFileSelect}
-            />
-
-            {/* Premium Drag & Drop Area */}
-            {!selectedFile ? (
-              <div
-                className={`ingest-dropzone ${dragOver ? 'drag-over' : ''}`}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleFileDrop}
-                onClick={() => fileInputRef.current?.click()}
-              >
-                <div className="ingest-dropzone-icon">
-                  <Icon name="upload" size={24} />
-                </div>
-                <div>
-                  <div className="text-primary font-semibold text-sm mb-1">
-                    Drag &amp; drop PCAP trace file here, or <span className="text-accent underline">browse</span>
-                  </div>
-                  <div className="text-secondary text-xs">
-                    Accepts PCAP / PCAPNG captures up to {labStatus?.max_upload_size_mb ?? 100} MB
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono text-muted" style={{ background: '#121214', border: '1px solid #222226' }}>.pcap</span>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono text-muted" style={{ background: '#121214', border: '1px solid #222226' }}>.pcapng</span>
-                </div>
-              </div>
-            ) : (
-              /* Selected File Preview Box */
-              <div
-                className="p-4 rounded-md flex flex-col gap-3"
-                style={{
-                  background: 'rgba(16, 185, 129, 0.04)',
-                  border: '1px solid rgba(16, 185, 129, 0.3)',
-                }}
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="w-10 h-10 rounded grid place-items-center"
-                      style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' }}
-                    >
-                      <Icon name="file" size={20} />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm text-primary">
-                        {selectedFile.name}
-                      </div>
-                      <div className="text-secondary text-xs font-mono">
-                        {formatBytes(selectedFile.size)} · Ready for cryptographic dissection
-                      </div>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="text-secondary hover:text-primary"
-                    onClick={() => setSelectedFile(null)}
-                    title="Remove file"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px' }}
-                  >
-                    <Icon name="x" size={16} />
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  className="btn btn-primary btn-full mt-1"
-                  disabled={uploading}
-                  onClick={() => handleUpload()}
-                >
-                  {uploading ? (
-                    <span className="flex items-center gap-2">
-                      <Icon name="refresh" size={14} />
-                      {uploadProgress || 'Vectorizing handshakes…'}
-                    </span>
-                  ) : (
-                    `Ingest & Analyze ${selectedFile.name} →`
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Card 2: Executive Compliance & Audit Reports */}
-          <div className="card p-5">
-            <div className="flex items-center gap-2 mb-1">
-              <Icon name="download" size={15} />
-              <h2 className="text-sm font-semibold" style={{ color: '#E8E8EC' }}>
-                Executive Audit Reports
-              </h2>
-            </div>
-            <p className="text-secondary text-xs mb-4">
-              Export assessment findings and supporting connection evidence.
-            </p>
-
-            <div className="flex flex-col gap-2.5">
-              <a
-                href="#" onClick={async (event) => {
-                  event.preventDefault();
-                  try { await downloadReport(resultJobId || 'demo_report', 'pdf'); }
-                  catch (err) { setError(err.message); }
-                }}
-                target="_blank"
-                rel="noreferrer"
-                className="report-export-item"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded grid place-items-center"
-                    style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444' }}
-                  >
-                    <Icon name="file" size={16} />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-xs text-primary">PDF Executive Briefing</div>
-                    <div className="text-secondary text-[11px]">Transport-security assessment with findings and recommendations</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-secondary font-mono">
-                  <span>Export</span>
-                  <Icon name="download" size={13} />
-                </div>
-              </a>
-
-              <a
-                href="#" onClick={async (event) => {
-                  event.preventDefault();
-                  try { await downloadReport(resultJobId || 'demo_report', 'html'); }
-                  catch (err) { setError(err.message); }
-                }}
-                target="_blank"
-                rel="noreferrer"
-                className="report-export-item"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded grid place-items-center"
-                    style={{ background: 'rgba(56, 189, 248, 0.1)', color: '#38BDF8' }}
-                  >
-                    <Icon name="globe" size={16} />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-xs text-primary">HTML Interactive Dossier</div>
-                    <div className="text-secondary text-[11px]">Interactive session replay with cipher suites and certificate chains</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-secondary font-mono">
-                  <span>Export</span>
-                  <Icon name="download" size={13} />
-                </div>
-              </a>
-
-              <a
-                href="#" onClick={async (event) => {
-                  event.preventDefault();
-                  try { await downloadReport(resultJobId || 'demo_report', 'json'); }
-                  catch (err) { setError(err.message); }
-                }}
-                target="_blank"
-                rel="noreferrer"
-                className="report-export-item"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-8 h-8 rounded grid place-items-center"
-                    style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--accent)' }}
-                  >
-                    <Icon name="code" size={16} />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-xs text-primary">JSON Telemetry Stream</div>
-                    <div className="text-secondary text-[11px]">Vectorized security telemetry schema for enterprise SIEM integration</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-secondary font-mono">
-                  <span>Export</span>
-                  <Icon name="download" size={13} />
-                </div>
-              </a>
-            </div>
-          </div>
-        </div>
-
-        {/* ── RIGHT COLUMN: LISTENERS & REAL-TIME STREAM ───────────────────────── */}
-        <div className="flex flex-col gap-6">
-          {/* Card 1: Multi-Port Socket Listeners Matrix */}
-          <div className="card p-5">
-            <div className="flex justify-between items-start mb-3 flex-wrap gap-2">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-accent">
-                    <Icon name="server" size={16} />
-                  </span>
-                  <h2 className="text-sm font-semibold tracking-tight" style={{ color: '#E8E8EC' }}>
-                    Multi-Port Socket Listeners
-                  </h2>
-                </div>
-                <p className="text-secondary text-xs">
-                  Controlled SMTP lab scenarios. Status is reported by the backend.
-                </p>
-              </div>
-              <div className="socket-active-pill">
-                <span className="socket-pulse-led" style={{ opacity: labStatus?.is_running ? 1 : 0.2, animation: labStatus?.is_running ? undefined : 'none' }} />
-                <span>{labStatus === null ? 'STATUS UNKNOWN' : labStatus.is_running ? 'LAB RUNNING' : 'LAB STOPPED'}</span>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2.5 my-3">
-              {PORT_LISTENERS.map((item) => (
-                <div
-                  key={item.port}
-                  className="socket-listener-card"
-                  style={{ '--socket-accent': item.accentColor }}
-                >
-                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
-                    {/* Hardware Socket Port Badge */}
-                    <div
-                      className="socket-port-badge"
-                      style={{
-                        borderColor: item.accentBorder,
-                        background: item.accentBg,
-                      }}
-                    >
-                      <span className="socket-port-tag">PORT</span>
-                      <span className="socket-port-num" style={{ color: item.accentColor }}>
-                        {item.port}
-                      </span>
-                    </div>
-
-                    {/* Metadata, Protocol Tag & Description */}
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <span className="text-xs font-bold text-primary tracking-tight">
-                          {item.label}
-                        </span>
-                        <span className="socket-protocol-tag">
-                          {item.protocol}
-                        </span>
-                      </div>
-                      <div className="text-xs text-secondary leading-snug">
-                        {item.desc}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status & Severity Controls */}
-                  <div className="flex items-center gap-2.5 flex-shrink-0">
-                    <span
-                      className="socket-risk-pill"
-                      style={{
-                        color: item.riskColor,
-                        background: item.riskBg,
-                        border: `1px solid ${item.riskBorder}`,
-                      }}
-                    >
-                      {item.riskTier}
-                    </span>
-                    <div className="socket-active-pill">
-                      <span className="socket-pulse-led" style={{ opacity: labStatus?.is_running ? 1 : 0.2, animation: labStatus?.is_running ? undefined : 'none' }} />
-                      <span>{labStatus === null ? 'UNKNOWN' : labStatus.is_running ? 'ONLINE' : 'OFFLINE'}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="socket-pipeline-footer">
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-accent">
-                  <Icon name="activity" size={13} />
-                </span>
-                <span className="text-[11px] font-mono font-bold text-accent tracking-wider uppercase">
-                  In-Memory Vectorization Pipeline
-                </span>
-              </div>
-              <p className="text-xs text-secondary leading-relaxed">
-                The controlled mail lab records connection metadata and rule-based findings. This feed does not capture traffic from external mail servers.
-              </p>
-            </div>
-          </div>
-
-          {/* Card 2: Captured Telemetry Stream */}
-          <div className="card p-5">
-            <div className="flex justify-between items-center mb-3">
-              <div className="flex items-center gap-2">
-                <Icon name="radar" size={15} />
-                <h2 className="text-sm font-semibold" style={{ color: '#E8E8EC' }}>
-                  Captured Sessions Feed
-                </h2>
-                {liveSessions.length > 0 && (
-                  <span className="badge badge-accent text-[10px] font-mono">
-                    {liveSessions.length} CAPTURED
-                  </span>
-                )}
-              </div>
-
-              {liveSessions.length > 0 && (
-                <button
-                  type="button"
-                  className="btn btn-sm btn-outline text-xs"
-                  onClick={() => setLiveSessions([])}
-                  style={{ padding: '3px 10px', fontSize: '11px' }}
-                >
-                  Clear Feed
-                </button>
-              )}
-            </div>
-
-            {liveSessions.length > 0 ? (
-              <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto pr-1">
-                {liveSessions.map((sess, idx) => (
-                  <div
-                    key={`${sess.session_id}-${idx}`}
-                    className="flex justify-between items-center p-3 rounded-md transition-all"
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.02)',
-                      border: '1px solid var(--border)',
-                    }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className="w-2 h-8 rounded-full"
-                        style={{
-                          background: sess.risk_score >= 75 ? 'var(--sev-critical)' : sess.risk_score >= 50 ? 'var(--sev-high)' : sess.risk_score >= 25 ? 'var(--sev-medium)' : 'var(--sev-clean)',
-                        }}
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-primary font-mono">
-                            #{sess.session_id} · {sess.scenario || 'LIVE_FLOW'}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#18181B] text-secondary">
-                            {sess.protocol}
-                          </span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#18181B] text-accent">
-                            {sess.tls_mode}
-                          </span>
-                        </div>
-                        <div className="text-muted text-[11px] font-mono mt-0.5">
-                          {sess.src_ip}:{sess.src_port} ➔ {sess.dst_ip}:{sess.dst_port}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-[10px] text-muted font-mono">RISK SCORE</div>
-                        <div
-                          className="font-bold text-xs font-mono"
-                          style={{
-                            color: sess.risk_score >= 75 ? 'var(--sev-critical)' : sess.risk_score >= 50 ? 'var(--sev-high)' : 'var(--sev-clean)',
-                          }}
-                        >
-                          {sess.risk_score} / 100
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ fontSize: '11px', padding: '4px 10px' }}
-                        onClick={() => navigate(`/dashboard/sessions/${sess.host_id || ''}`)}
-                      >
-                        Inspect →
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              /* High-Tech Radar Awaiting State */
-              <div className="feed-awaiting-container">
-                <div className="feed-radar-halo">
-                  <Icon name="radar" size={22} className="animate-pulse" />
-                </div>
-                <div>
-                  <div className="feed-awaiting-title">
-                    Awaiting Incoming Mail Traffic
-                  </div>
-                  <p className="feed-awaiting-desc">
-                    Passive listeners bound to <code className="font-mono text-accent font-semibold">{lanIp}:2525–2528</code>. Run a test client to view real-time handshakes.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setShowRemoteGuide(true)}
-                >
-                  <Icon name="terminal" size={13} />
-                  <span>Open Test Harness Commands</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── SYSTEM MAINTENANCE / ENVIRONMENT BASELINE ────────────────────────── */}
-      <div
-        className="card p-4 flex justify-between items-center flex-wrap gap-3 mt-2"
-        style={{
-          background: 'rgba(13, 13, 14, 0.6)',
-          border: '1px solid var(--border)',
-        }}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded grid place-items-center"
-            style={{ background: 'rgba(255, 255, 255, 0.04)', color: 'var(--text-muted)' }}
-          >
-            <Icon name="shield" size={15} />
-          </div>
-          <div>
-            <div className="font-semibold text-xs text-primary">System Telemetry Buffer &amp; Maintenance</div>
-            <div className="text-secondary text-[11px]">
-              Clears historical session database and re-establishes an untainted zero-traffic posture for clean demonstrations.
-            </div>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          className="btn btn-outline btn-sm"
-          onClick={handleClearHistory}
-          disabled={clearing}
-          style={{
-            color: '#F87171',
-            borderColor: 'rgba(239, 68, 68, 0.25)',
-          }}
-        >
-          <Icon name="trash" size={13} />
-          {clearing ? 'Clearing Database…' : 'Reset Database & Clear History'}
-        </button>
-      </div>
-
-      {/* ── CONNECTION DIRECTIVES MODAL ──────────────────────────────────────── */}
+      {canUseLab && <details className="simple-details"><summary>Manage history</summary><div className="simple-row"><p className="text-secondary text-sm">Clear the controlled mail lab’s captured sessions.</p><button className="btn btn-outline" disabled={clearing || uploading} onClick={handleClearHistory}>{clearing ? 'Clearing…' : 'Clear history'}</button></div></details>}
       {showRemoteGuide && (
-        <div className="live-modal-overlay" onClick={() => setShowRemoteGuide(false)}>
+        <Modal label="Client connection guide" onClose={() => setShowRemoteGuide(false)}>
           <div className="live-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-start mb-4 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
               <div className="flex items-center gap-3">
@@ -806,7 +324,7 @@ export default function LiveIngest() {
                   <Icon name="terminal" size={18} />
                 </div>
                 <div>
-                  <h3 className="text-md font-bold text-primary">Client Connection Directives</h3>
+                  <h3 className="text-md font-bold text-primary">Connection guide</h3>
                   <p className="text-secondary text-xs">
                     Send test mail flows from any laptop or machine connected to the same LAN or Wi-Fi.
                   </p>
@@ -816,6 +334,7 @@ export default function LiveIngest() {
                 type="button"
                 className="text-secondary hover:text-primary"
                 onClick={() => setShowRemoteGuide(false)}
+                aria-label="Close connection guide"
                 style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px' }}
               >
                 <Icon name="x" size={18} />
@@ -905,13 +424,14 @@ EOF`}
                 type="button"
                 className="btn btn-primary btn-sm"
                 onClick={() => setShowRemoteGuide(false)}
+                aria-label="Close connection guide"
                 style={{ padding: '6px 18px', fontSize: '13px' }}
               >
                 Close Directives
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

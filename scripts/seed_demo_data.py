@@ -8,7 +8,6 @@ and AI risk scores for immediate presentation.
 """
 
 import sys
-import uuid
 from pathlib import Path
 
 # Add src to pythonpath

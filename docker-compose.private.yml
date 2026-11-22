@@ -1,0 +1,7 @@
+services:
+  edge:
+    volumes:
+      - ./docker/Caddyfile.private:/etc/caddy/Caddyfile:ro
+    ports: !override
+      - "${PILOT_LAN_IP:?Set private interface IP}:80:80"
+      - "${PILOT_LAN_IP:?Set private interface IP}:443:443"

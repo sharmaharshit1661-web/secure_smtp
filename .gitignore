@@ -37,10 +37,12 @@ htmlcov/
 *.db
 *.sqlite
 *.sqlite3
+tmp/
 /tmp/secure_smtp_*
 /tmp/securemailscope_*
-output/
-tmp/
+/tmp/security-*
+/tmp/python-security-audit*.json
+/tmp/streamlit-*.txt
 
 # Build / Egg metadata
 build/
@@ -48,6 +50,7 @@ dist/
 *.egg-info/
 node_modules/
 frontend/dist/
+frontend/dist-offline/
 
 # Internal specs and planning docs
 01_PRD.md
@@ -62,3 +65,4 @@ PRODUCTION_READY.md
 .env.*
 *.env
 !.env.example
+!.env.offline.example

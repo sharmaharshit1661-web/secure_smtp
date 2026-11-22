@@ -1,0 +1,7 @@
+{$PILOT_DOMAIN} {
+    tls internal
+    reverse_proxy /id/* identity:8080
+    @backend path /api/* /ws/*
+    reverse_proxy @backend backend:8000
+    reverse_proxy frontend:80
+}

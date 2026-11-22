@@ -1,9 +1,11 @@
+import { usePilot } from '../context/PilotContext';
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import Icon from './Icon';
 import Logo from './Logo';
 
 const NAV_ITEMS = [
+  { to: '/dashboard/operations', label: 'Monitoring & operations', icon: 'globe' },
   { to: '/dashboard', label: 'Fleet Overview', icon: 'globe' },
   { to: '/dashboard/sessions', label: 'Session Explorer', icon: 'microscope' },
   { to: '/dashboard/ingest', label: 'Live Ingest', icon: 'bolt' },
@@ -13,20 +15,15 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange }) {
-  const [sysTime, setSysTime] = useState('');
+  const { canUseLab } = usePilot();
   const [isResizing, setIsResizing] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 768px)').matches);
 
   useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      const h = String(now.getUTCHours()).padStart(2, '0');
-      const m = String(now.getUTCMinutes()).padStart(2, '0');
-      const s = String(now.getUTCSeconds()).padStart(2, '0');
-      setSysTime(`${h}:${m}:${s} UTC`);
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
+    const query = window.matchMedia('(max-width: 768px)');
+    const sync = () => setIsMobile(query.matches);
+    query.addEventListener('change', sync);
+    return () => query.removeEventListener('change', sync);
   }, []);
 
   const handleMouseDown = (e) => {
@@ -62,7 +59,7 @@ export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange })
   };
 
   return (
-    <aside className={`app-sidebar ${isOpen ? 'open' : ''} ${isResizing ? 'resizing' : ''}`}>
+    <aside inert={isMobile && !isOpen} aria-hidden={isMobile && !isOpen ? true : undefined} id="console-navigation" className={`app-sidebar ${isOpen ? 'open' : ''} ${isResizing ? 'resizing' : ''}`}>
       {/* Brand */}
       <div className="sidebar-brand">
         <div className="sidebar-brand-icon">
@@ -74,16 +71,12 @@ export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange })
         </div>
       </div>
 
-      {/* Clock */}
-      <div className="sidebar-clock">
-        <span className="sidebar-clock-label">System Time</span>
-        <span className="sidebar-clock-val">{sysTime || '00:00:00 UTC'}</span>
-      </div>
+      <button className="sidebar-mobile-close btn btn-outline" onClick={onClose}>Close navigation</button>
 
       {/* Navigation */}
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" aria-label="Workspace">
         <div className="sidebar-section-label">Console</div>
-        {NAV_ITEMS.map(({ to, label, icon }) => (
+        {NAV_ITEMS.filter(item => canUseLab || item.to !== '/dashboard/client').map(({ to, label, icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -101,17 +94,6 @@ export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange })
 
       <div className="sidebar-spacer" />
 
-
-      {/* Seal */}
-      <div className="sidebar-seal">
-        <div className="sidebar-seal-title">
-          <Icon name="lock" size={13} />
-          <span>Forensic Engine</span>
-        </div>
-        <div className="sidebar-seal-desc">
-          Real-time passive cryptographic posture intelligence
-        </div>
-      </div>
 
       {/* Attribution */}
       <div className="sidebar-watermark">
@@ -133,6 +115,17 @@ export default function Sidebar({ isOpen, onClose, width = 264, onWidthChange })
         onDoubleClick={handleDoubleClick}
         title="Drag to resize sidebar · Double-click to reset (264px)"
         aria-label="Resize sidebar"
+        tabIndex={0}
+        aria-valuemin={200}
+        aria-valuemax={480}
+        aria-valuenow={width}
+        onKeyDown={event => {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            onWidthChange?.(Math.min(480, Math.max(200, width + (event.key === 'ArrowRight' ? 16 : -16))));
+          }
+          if (event.key === 'Home') { event.preventDefault(); onWidthChange?.(264); }
+        }}
         role="separator"
         aria-orientation="vertical"
       >

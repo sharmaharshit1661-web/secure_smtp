@@ -1,0 +1,51 @@
+{
+  "realm": "pilot",
+  "enabled": true,
+  "registrationAllowed": false,
+  "bruteForceProtected": true,
+  "roles": {
+    "client": {
+      "secure-smtp": [
+        {
+          "name": "analyst"
+        },
+        {
+          "name": "admin"
+        }
+      ]
+    }
+  },
+  "clients": [
+    {
+      "clientId": "secure-smtp",
+      "protocol": "openid-connect",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "https://${PILOT_DOMAIN}/dashboard",
+        "https://${PILOT_DOMAIN}/"
+      ],
+      "webOrigins": [
+        "https://${PILOT_DOMAIN}"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://${PILOT_DOMAIN}/"
+      },
+      "protocolMappers": [
+        {
+          "name": "Secure SMTP API audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "secure-smtp-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ]
+}

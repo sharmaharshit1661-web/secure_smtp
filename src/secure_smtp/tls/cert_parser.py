@@ -34,7 +34,7 @@ class ParsedCertificate:
     key_length_bits: int = 0
     signature_algorithm: str = ""
     self_signed: bool = False
-    chain_valid: bool = True
+    chain_valid: bool | None = None
     serial_number: str = ""
 
     # Raw certificate for further inspection
@@ -180,19 +180,24 @@ def parse_certificate_chain(
         if cert:
             parsed.append(cert)
 
-    # Verify observed issuer signatures, not just matching distinguished names.
-    # This is not trust-store, hostname or revocation validation.
-    for i, current in enumerate(parsed):
-        issuer = parsed[i + 1] if i + 1 < len(parsed) else (current if current.self_signed else None)
-        if issuer is None:
-            continue  # Missing issuer is an observation limit, not proof of trust.
-        try:
-            child = x509.load_der_x509_certificate(current.raw_der)
-            parent = x509.load_der_x509_certificate(issuer.raw_der)
-            child.verify_directly_issued_by(parent)
-        except Exception:
-            current.chain_valid = False
-            logger.debug("Certificate issuer signature failed at position %d", current.chain_position)
+    # Validate chain: each cert's issuer should match the next cert's subject
+    if len(parsed) > 1:
+        for i in range(len(parsed) - 1):
+            current = parsed[i]
+            next_cert = parsed[i + 1]
+            if current.issuer != next_cert.subject:
+                current.chain_valid = False
+                logger.debug(
+                    "Chain break at position %d: issuer '%s' != next subject '%s'",
+                    i,
+                    current.issuer,
+                    next_cert.subject,
+                )
+
+    # If the chain has only one cert that is self-signed, it's still valid
+    # (but the rule engine will flag self-signed as a finding)
+    if len(parsed) == 1 and parsed[0].self_signed:
+        parsed[0].chain_valid = None  # Trust and signatures are not validated by issuer-name matching.
 
     # Check if the chain is complete (root should be self-signed or trusted)
     if parsed and not parsed[-1].self_signed:

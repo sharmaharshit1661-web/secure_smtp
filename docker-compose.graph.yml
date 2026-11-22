@@ -1,0 +1,14 @@
+services:
+  graph:
+    image: neo4j:5.26-community
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "neo4j/${GRAPH_PASSWORD:?Supply a local graph password}"
+    volumes: ["graph_data:/data"]
+  backend:
+    environment:
+      SECURE_SMTP_NEO4J_URI: bolt://graph:7687
+      SECURE_SMTP_NEO4J_USER: neo4j
+      SECURE_SMTP_NEO4J_PASSWORD: ${GRAPH_PASSWORD:?Supply a local graph password}
+volumes:
+  graph_data:

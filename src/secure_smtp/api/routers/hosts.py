@@ -11,7 +11,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import DESCENDING
 
-from secure_smtp.api.auth import verify_api_key
+from secure_smtp.api.auth import Principal, verify_api_key, visible_scope
 from secure_smtp.db.mongodb import get_hosts_col, get_sessions_col
 
 logger = logging.getLogger(__name__)
@@ -20,10 +20,10 @@ router = APIRouter(prefix="/api/hosts", tags=["Hosts"], dependencies=[Depends(ve
 
 
 @router.get("")
-async def list_hosts() -> list[dict]:
+async def list_hosts(principal: Principal = Depends(verify_api_key)) -> list[dict]:
     """List all evaluated mail hosts sorted by aggregate risk score descending."""
     hosts_col = get_hosts_col()
-    hosts = list(hosts_col.find({}, {"_id": 0}).sort("aggregate_risk_score", DESCENDING))
+    hosts = list(hosts_col.find(visible_scope(principal), {"_id": 0}).sort("aggregate_risk_score", DESCENDING))
     return [
         {
             "host_id": h["id"],
@@ -36,16 +36,16 @@ async def list_hosts() -> list[dict]:
 
 
 @router.get("/{host_id}")
-async def get_host_detail(host_id: int) -> dict:
+async def get_host_detail(host_id: int, principal: Principal = Depends(verify_api_key)) -> dict:
     """Get detailed host metadata including complete session history."""
     hosts_col = get_hosts_col()
     sessions_col = get_sessions_col()
 
-    host = hosts_col.find_one({"id": host_id}, {"_id": 0})
+    host = hosts_col.find_one(visible_scope(principal, {"id": host_id}), {"_id": 0})
     if not host:
         raise HTTPException(status_code=404, detail="Host not found")
 
-    sessions = list(sessions_col.find({"host_id": host_id}, {"_id": 0}))
+    sessions = list(sessions_col.find(visible_scope(principal, {"host_id": host_id}), {"_id": 0}))
 
     session_list = []
     for s in sessions:

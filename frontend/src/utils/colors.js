@@ -1,6 +1,6 @@
 /**
  * Severity and risk tier color mapping.
- * Crimson Dark Premium Design System tokens.
+ * CSS variables keep SVG, chart, and DOM colors in sync with the selected theme.
  */
 
 export const TIER_COLORS = {
@@ -12,14 +12,8 @@ export const TIER_COLORS = {
   info: 'var(--sev-info)',
 };
 
-export const TIER_COLORS_RAW = {
-  critical: '#EF4444',
-  high: '#F97316',
-  medium: '#FACC15',
-  low: '#38BDF8',
-  clean: '#10B981',
-  info: '#64748B',
-};
+// Retained for existing callers; SVG and Recharts both accept CSS color variables.
+export const TIER_COLORS_RAW = TIER_COLORS;
 
 export function getTierFromScore(score) {
   if (score >= 75) return 'critical';

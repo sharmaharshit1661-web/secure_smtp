@@ -1,58 +1,63 @@
+import { usePilot } from '../context/PilotContext';
+import { Navigate } from 'react-router-dom';
+import Notice from '../components/Notice';
+import useClipboard from '../hooks/useClipboard';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
 import { dispatchCustomMail, getLiveStatus } from '../api/client';
 
 const SCENARIOS = [
   {
     id: 'stripping',
     port: 2528,
-    name: 'STARTTLS Stripping Attack',
+    name: 'STARTTLS downgrade',
     badge: 'CRITICAL',
     badgeClass: 'badge-critical',
     color: 'var(--severity-critical)',
     glow: 'rgba(239, 68, 68, 0.25)',
     icon: 'alert',
-    shortDesc: 'Active MitM proxy forces unencrypted cleartext by intercepting EHLO.',
+    shortDesc: 'Simulate a stripped encryption upgrade.',
     defaultSubject: 'URGENT: Executive Wire Transfer Authorization',
     defaultBody: 'Wire $450,000 to routing #984128912 immediately. Token: SEC_AUTH_9921_PLAINTEXT',
   },
   {
     id: 'plaintext',
     port: 2525,
-    name: 'Plaintext Transmission',
+    name: 'Plaintext',
     badge: 'HIGH RISK',
     badgeClass: 'badge-high',
     color: 'var(--severity-high)',
     glow: 'rgba(249, 115, 22, 0.25)',
     icon: 'lock',
-    shortDesc: 'Unencrypted transmission on standard SMTP port with zero TLS layer.',
+    shortDesc: 'Send without encryption.',
     defaultSubject: 'Internal Database Backup Credentials',
     defaultBody: 'DB_HOST=prod-db.internal DB_USER=root DB_PASS=SuperSecret2026! PII records: 14,200',
   },
   {
     id: 'vulnerable',
     port: 2527,
-    name: 'Legacy TLS / Expired Cert',
+    name: 'Legacy TLS',
     badge: 'WEAK CRYPTO',
     badgeClass: 'badge-medium',
     color: 'var(--severity-medium)',
     glow: 'rgba(250, 204, 21, 0.25)',
     icon: 'certificate',
-    shortDesc: 'Negotiates deprecated TLS with expired X.509 certificate.',
+    shortDesc: 'Test old TLS and an expired certificate.',
     defaultSubject: 'Quarterly Compliance Audit',
     defaultBody: 'Quarterly compliance telemetry report for legacy mail relays in cluster west-2.',
   },
   {
     id: 'tls_modern',
     port: 2526,
-    name: 'Hardened TLS 1.3 Baseline',
+    name: 'Modern TLS',
     badge: 'SECURE',
     badgeClass: 'badge-clean',
     color: 'var(--severity-healthy)',
     glow: 'rgba(16, 185, 129, 0.25)',
     icon: 'check',
-    shortDesc: 'Gold-standard TLS 1.3 with Perfect Forward Secrecy & AEAD ciphers.',
+    shortDesc: 'Use the encrypted baseline.',
     defaultSubject: 'Secured Cryptographic Transmission',
     defaultBody: 'Verified end-to-end TLS 1.3 encryption handshake with authenticated cipher suite.',
   },
@@ -66,6 +71,12 @@ const PRESETS = [
 ];
 
 export default function ClientDispatcher() {
+  const { canUseLab } = usePilot();
+  return canUseLab ? <MailLab /> : <Navigate to="/dashboard/operations" replace />;
+}
+
+function MailLab() {
+  const { copyText, clipboardError } = useClipboard();
   const [selectedScenario, setSelectedScenario] = useState('stripping');
   const [clientName, setClientName] = useState("Friend's Laptop");
   const [sender, setSender] = useState('alice@friend-device.local');
@@ -84,16 +95,20 @@ export default function ClientDispatcher() {
 
   const terminalContainerRef = useRef(null);
   const continuousTimerRef = useRef(null);
+  const transmitInFlight = useRef(false);
+  const loopStep = useRef(0);
 
   useEffect(() => {
+    let active = true;
     getLiveStatus()
       .then((data) => {
-        if (data?.lan_ip && (!serverHost || serverHost === 'localhost' || serverHost === '127.0.0.1')) {
-          setServerHost(data.lan_ip);
+        if (active && data?.lan_ip) {
+          setServerHost(previous => !previous || previous === 'localhost' || previous === '127.0.0.1' ? data.lan_ip : previous);
         }
       })
       .catch(() => {});
-  }, [serverHost]);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (terminalContainerRef.current) {
@@ -111,6 +126,13 @@ export default function ClientDispatcher() {
   };
 
   const handleTransmit = useCallback(async (scenarioOverride) => {
+    if (transmitInFlight.current) return;
+    if (!serverHost.trim() || !sender.trim() || !recipient.trim()) {
+      setError('Enter a server address, sender, and recipient before sending.');
+      setContinuousMode(false);
+      return;
+    }
+    transmitInFlight.current = true;
     const scId = scenarioOverride || selectedScenario;
     const currentSc = SCENARIOS.find((s) => s.id === scId) || SCENARIOS[0];
 
@@ -140,9 +162,10 @@ export default function ClientDispatcher() {
 
       const res = await dispatchCustomMail(payload);
       if (res.transcript) {
-        setTranscript((prev) => [...prev, ...res.transcript]);
+        setTranscript((prev) => [...prev, ...res.transcript].slice(-500));
       }
       setLastResult(res);
+      if (res.success === false) { setError(res.error || 'Transmission failed. Check the transcript for details.'); setContinuousMode(false); }
     } catch (err) {
       setError(err.message || 'Transmission failed. Ensure server listener is active.');
       setTranscript((prev) => [
@@ -154,19 +177,20 @@ export default function ClientDispatcher() {
         },
       ]);
     } finally {
+      transmitInFlight.current = false;
       setLoading(false);
     }
   }, [selectedScenario, serverHost, sender, recipient, subject, body, clientName]);
 
   useEffect(() => {
     if (continuousMode) {
-      let step = 0;
       const order = ['stripping', 'plaintext', 'vulnerable', 'tls_modern'];
       continuousTimerRef.current = setInterval(() => {
-        const nextSc = order[step % order.length];
+        if (transmitInFlight.current) return;
+        const nextSc = order[loopStep.current % order.length];
         setSelectedScenario(nextSc);
         handleTransmit(nextSc);
-        step += 1;
+        loopStep.current += 1;
       }, 7000);
     } else {
       if (continuousTimerRef.current) {
@@ -181,7 +205,7 @@ export default function ClientDispatcher() {
   const copyTranscriptToClipboard = () => {
     if (!transcript.length) return;
     const text = transcript.map(t => `${t.timestamp} [${t.direction.toUpperCase()}] ${t.text}`).join('\n');
-    navigator.clipboard.writeText(text).then(() => {
+    copyText(text, () => {
       setCopiedTranscript(true);
       setTimeout(() => setCopiedTranscript(false), 2000);
     });
@@ -191,6 +215,7 @@ export default function ClientDispatcher() {
 
   return (
     <div className="flex flex-col gap-6" style={{ maxWidth: '1440px', margin: '0 auto', paddingBottom: 'var(--space-8)' }}>
+      {clipboardError && <Notice>{clipboardError}</Notice>}
       {/* Top Header */}
       <div className="page-header animate-in">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4" style={{ width: '100%' }}>
@@ -202,7 +227,7 @@ export default function ClientDispatcher() {
               </h1>
             </div>
             <p className="page-subtitle">
-              Direct socket transmission engine for cryptographic attack simulation and protocol validation.
+              Send test messages to compare encrypted, plaintext, and downgrade scenarios.
             </p>
           </div>
 
@@ -222,7 +247,7 @@ export default function ClientDispatcher() {
               }}
             >
               <div className="flex items-center gap-2">
-                <span className="status-dot status-dot-active" />
+                <Icon name="server" size={13} />
                 <span style={{ color: 'var(--text-muted)' }}>TARGET:</span>
                 <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{serverHost}</span>
               </div>
@@ -231,7 +256,8 @@ export default function ClientDispatcher() {
             <button
               className={`btn ${continuousMode ? 'btn-critical' : 'btn-outline'}`}
               style={{ fontSize: '12px', padding: '6px 14px', textTransform: 'uppercase', gap: '6px' }}
-              onClick={() => setContinuousMode(!continuousMode)}
+              aria-pressed={continuousMode}
+              onClick={() => { loopStep.current = 0; setContinuousMode(!continuousMode); }}
             >
               <Icon name={continuousMode ? 'stop' : 'refresh'} size={12} />
               {continuousMode ? 'Stop Loop' : 'Auto Loop'}
@@ -267,80 +293,169 @@ export default function ClientDispatcher() {
       )}
 
       {/* Row 1: Attack Scenarios (Left) & Socket Terminal (Right) — As they were */}
-      <div className="grid grid-1 lg:grid-2 gap-6" style={{ alignItems: 'stretch' }}>
+      <div className="grid grid-1 lg:grid-2 gap-6" style={{ alignItems: 'start' }}>
         
-        {/* LEFT: Attack & Baseline Scenarios (2x2 Grid) */}
-        <div className="card" style={{ padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', height: '100%' }}>
-          <div>
-            <div className="flex justify-between items-center" style={{ marginBottom: '14px' }}>
-              <div className="flex items-center gap-2">
-                <Icon name="shield" size={16} />
-                <span className="font-bold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Attack &amp; Baseline Scenarios
-                </span>
-              </div>
-              <span className="badge badge-accent text-mono" style={{ fontSize: '11px' }}>
-                4 VECTORS
-              </span>
-            </div>
+        <section className="card simple-stack">
+          <h2>Test scenario</h2>
+          <div className="scenario-options" role="group" aria-label="Test scenario">{SCENARIOS.map(scenario => <button
+            key={scenario.id} type="button" className="scenario-option" aria-pressed={selectedScenario === scenario.id}
+            disabled={loading || continuousMode} onClick={() => handleScenarioSelect(scenario.id)}
+          ><span><strong>{scenario.name}</strong><small>{scenario.shortDesc}</small></span><code>{scenario.port}</code></button>)}</div>
+        </section>
 
-            <div className="grid grid-2 gap-3">
-              {SCENARIOS.map((sc) => {
-                const isSelected = selectedScenario === sc.id;
-                return (
-                  <div
-                    key={sc.id}
-                    onClick={() => handleScenarioSelect(sc.id)}
-                    className={`dispatch-scenario-card ${isSelected ? 'active' : ''}`}
-                    style={{
-                      '--scenario-color': sc.color,
-                      '--scenario-glow': sc.glow,
-                    }}
-                  >
-                    <div>
-                      <div className="flex justify-between items-center gap-2" style={{ marginBottom: '6px' }}>
-                        <div className="flex items-center gap-2">
-                          <span style={{ color: sc.color }}>
-                            <Icon name={sc.icon} size={15} strokeWidth={2} />
-                          </span>
-                          <span className="font-bold text-xs" style={{ color: isSelected ? sc.color : 'var(--text-primary)' }}>
-                            {sc.name}
-                          </span>
-                        </div>
-                        <span
-                          className="badge text-mono"
-                          style={{
-                            fontSize: '10px',
-                            background: 'var(--bg-inset)',
-                            borderColor: isSelected ? sc.color : 'var(--border)',
-                            color: isSelected ? sc.color : 'var(--text-muted)',
-                            padding: '1px 6px',
-                          }}
-                        >
-                          :{sc.port}
-                        </span>
-                      </div>
-
-                      <p className="text-xs text-secondary" style={{ margin: 0, fontSize: '11px', lineHeight: '1.4' }}>
-                        {sc.shortDesc}
-                      </p>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs pt-2" style={{ borderTop: '1px solid var(--border)' }}>
-                      <span className={`badge ${sc.badgeClass}`} style={{ fontSize: '10px', padding: '1px 6px' }}>
-                        {sc.badge}
-                      </span>
-                      <span style={{ color: sc.color, fontWeight: 700, fontSize: '11px', fontFamily: 'var(--font-mono)' }}>
-                        PORT {sc.port}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+      {/* Row 2: Message in Wide Rectangular Form (Full Width - Properly Utilizing Page) */}
+      <div className="card" style={{ padding: '20px' }}>
+        <div className="flex justify-between items-center flex-wrap gap-2" style={{ marginBottom: '16px' }}>
+          <div className="flex items-center gap-2">
+            <Icon name="mail" size={16} />
+            <span className="font-bold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Message
+            </span>
+          </div>
+          <div className="flex gap-1 flex-wrap items-center">
+            <span className="text-xs text-muted font-mono" style={{ fontSize: '11px', marginRight: '4px' }}>PRESETS:</span>
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                className="dispatch-preset-btn"
+                onClick={() => {
+                  setSubject(p.subject);
+                  setBody(p.body);
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
           </div>
         </div>
 
+        {/* 4 Parameters in a Single Horizontal Row */}
+        <div className="grid grid-1 sm:grid-2 gap-3" style={{ marginBottom: '14px' }}>
+          <div>
+            <label htmlFor="client-name" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Client name</label>
+            <input id="client-name"
+              type="text"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Friend's Laptop"
+              className="input text-xs"
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="server-host" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Server address</label>
+            <input id="server-host"
+              type="text"
+              value={serverHost}
+              onChange={(e) => setServerHost(e.target.value)}
+              placeholder="192.168.1.40"
+              className="input text-xs text-mono"
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="sender" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Sender</label>
+            <input id="sender"
+              type="email"
+              value={sender}
+              onChange={(e) => setSender(e.target.value)}
+              placeholder="alice@friend-device.local"
+              className="input text-xs text-mono"
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="recipient" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Recipient</label>
+            <input id="recipient"
+              type="email"
+              value={recipient}
+              onChange={(e) => setRecipient(e.target.value)}
+              placeholder="bob@securesmtp.local"
+              className="input text-xs text-mono"
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+
+        {/* Subject & Message Body in 2 Balanced Columns */}
+        <div className="grid grid-1 lg:grid-2 gap-3" style={{ marginBottom: '14px' }}>
+          <div>
+            <label htmlFor="subject" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Subject</label>
+            <input id="subject"
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Email Subject"
+              className="input text-xs"
+              style={{ width: '100%', marginBottom: '8px' }}
+            />
+            <div className="text-xs text-secondary" style={{ fontSize: '11px', lineHeight: '1.4' }}>
+              RFC 5322 header envelope. Attack scenarios will inject and analyze the cryptographic envelope around this payload.
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="body" className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Message Body</label>
+            <textarea id="body"
+              rows={3}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Transmission payload content..."
+              className="input text-xs text-mono"
+              style={{ width: '100%', resize: 'vertical', minHeight: '68px' }}
+            />
+          </div>
+        </div>
+
+        {/* Route Bar & Trigger */}
+        <div className="dispatch-route-bar" style={{ marginTop: '6px' }}>
+          <div className="flex items-center gap-2 text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
+            <span className="text-muted">TARGET ROUTE:</span>
+            <span className="font-bold" style={{ color: activeScObj.color }}>
+              {serverHost}:{activeScObj.port}
+            </span>
+            <span className="badge text-mono" style={{ fontSize: '10px', padding: '1px 6px', color: activeScObj.color, borderColor: activeScObj.color }}>
+              {activeScObj.badge}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={loading}
+            onClick={() => handleTransmit()}
+            style={{
+              padding: '8px 24px',
+              fontSize: '12px',
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            {loading ? (
+              <>
+                <Icon name="server" size={13} />
+                <span>Sending…</span>
+              </>
+            ) : (
+              <>
+                <Icon name="send" size={14} />
+                <span>Send test message</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      </div>
+
+      {lastResult && <Notice tone={lastResult.success ? 'info' : 'error'}><span>{lastResult.success ? 'Message sent.' : 'Message failed. Check the transcript.'} {lastResult.cipher_info || ''}</span>{lastResult.success && <Link className="text-action" to="/dashboard/sessions"> View sessions →</Link>}</Notice>}
+      <details className="simple-details"><summary>Connection transcript <span>{transcript.length} entries</span></summary>
         {/* RIGHT: Live Socket Terminal Window */}
         <div className="dispatch-terminal-window" style={{ height: '100%', minHeight: '360px', margin: 0 }}>
           {/* Terminal Header */}
@@ -395,7 +510,7 @@ export default function ClientDispatcher() {
                 if (item.direction === 'send') {
                   badgeColor = 'var(--accent)';
                   prefix = 'CLIENT →';
-                  textColor = '#FFFFFF';
+                  textColor = 'var(--text-primary)';
                 } else if (item.direction === 'recv') {
                   badgeColor = 'var(--sev-low)';
                   prefix = '← SERVER';
@@ -403,15 +518,15 @@ export default function ClientDispatcher() {
                 } else if (item.direction === 'crypto') {
                   badgeColor = 'var(--sev-clean)';
                   prefix = '[CRYPTO]';
-                  textColor = '#86efac';
+                  textColor = 'var(--sev-clean)';
                 } else if (item.direction === 'alert') {
                   badgeColor = 'var(--sev-critical)';
                   prefix = '[TAMPER]';
-                  textColor = '#fca5a5';
+                  textColor = 'var(--sev-critical)';
                 } else if (item.direction === 'error') {
                   badgeColor = 'var(--sev-critical)';
                   prefix = '[ERROR]';
-                  textColor = '#ef4444';
+                  textColor = 'var(--sev-critical)';
                 }
 
                 return (
@@ -438,235 +553,17 @@ export default function ClientDispatcher() {
           {/* Footer */}
           <div className="dispatch-terminal-footer">
             <div className="flex items-center gap-2">
-              <span className="status-dot status-dot-active" />
+              <Icon name="server" size={13} />
               <span>PORT {activeScObj.port}</span>
             </div>
             <div>{transcript.length} events logged</div>
           </div>
         </div>
-
-      </div>
-
-      {/* Row 2: Payload Parameters in Wide Rectangular Form (Full Width - Properly Utilizing Page) */}
-      <div className="card" style={{ padding: '20px' }}>
-        <div className="flex justify-between items-center flex-wrap gap-2" style={{ marginBottom: '16px' }}>
-          <div className="flex items-center gap-2">
-            <Icon name="mail" size={16} />
-            <span className="font-bold text-sm" style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Payload Parameters
-            </span>
-          </div>
-          <div className="flex gap-1 flex-wrap items-center">
-            <span className="text-xs text-muted font-mono" style={{ fontSize: '11px', marginRight: '4px' }}>PRESETS:</span>
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                className="dispatch-preset-btn"
-                onClick={() => {
-                  setSubject(p.subject);
-                  setBody(p.body);
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* 4 Parameters in a Single Horizontal Row */}
-        <div className="grid grid-1 sm:grid-2 lg:grid-4 gap-3" style={{ marginBottom: '14px' }}>
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Client Device Identifier</label>
-            <input
-              type="text"
-              value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
-              placeholder="Friend's Laptop"
-              className="input text-xs"
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Target Server IP</label>
-            <input
-              type="text"
-              value={serverHost}
-              onChange={(e) => setServerHost(e.target.value)}
-              placeholder="192.168.1.40"
-              className="input text-xs text-mono"
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Sender (MAIL FROM)</label>
-            <input
-              type="email"
-              value={sender}
-              onChange={(e) => setSender(e.target.value)}
-              placeholder="alice@friend-device.local"
-              className="input text-xs text-mono"
-              style={{ width: '100%' }}
-            />
-          </div>
-
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Recipient (RCPT TO)</label>
-            <input
-              type="email"
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              placeholder="bob@securesmtp.local"
-              className="input text-xs text-mono"
-              style={{ width: '100%' }}
-            />
-          </div>
-        </div>
-
-        {/* Subject & Message Body in 2 Balanced Columns */}
-        <div className="grid grid-1 lg:grid-2 gap-3" style={{ marginBottom: '14px' }}>
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Subject</label>
-            <input
-              type="text"
-              value={subject}
-              onChange={(e) => setSubject(e.target.value)}
-              placeholder="Email Subject"
-              className="input text-xs"
-              style={{ width: '100%', marginBottom: '8px' }}
-            />
-            <div className="text-xs text-secondary" style={{ fontSize: '11px', lineHeight: '1.4' }}>
-              RFC 5322 header envelope. Attack scenarios will inject and analyze the cryptographic envelope around this payload.
-            </div>
-          </div>
-
-          <div>
-            <label className="field-label" style={{ fontSize: '11px', marginBottom: '4px' }}>Message Body</label>
-            <textarea
-              rows={3}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Transmission payload content..."
-              className="input text-xs text-mono"
-              style={{ width: '100%', resize: 'vertical', minHeight: '68px' }}
-            />
-          </div>
-        </div>
-
-        {/* Route Bar & Trigger */}
-        <div className="dispatch-route-bar" style={{ marginTop: '6px' }}>
-          <div className="flex items-center gap-2 text-xs" style={{ fontFamily: 'var(--font-mono)' }}>
-            <span className="text-muted">TARGET ROUTE:</span>
-            <span className="font-bold" style={{ color: activeScObj.color }}>
-              {serverHost}:{activeScObj.port}
-            </span>
-            <span className="badge text-mono" style={{ fontSize: '10px', padding: '1px 6px', color: activeScObj.color, borderColor: activeScObj.color }}>
-              {activeScObj.badge}
-            </span>
-          </div>
-
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={loading}
-            onClick={() => handleTransmit()}
-            style={{
-              padding: '8px 24px',
-              fontSize: '12px',
-              fontWeight: 600,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            {loading ? (
-              <>
-                <span className="status-dot status-dot-active" />
-                <span>TRANSMITTING...</span>
-              </>
-            ) : (
-              <>
-                <Icon name="send" size={14} />
-                <span>Transmit Scenario →</span>
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Row 3: Session Forensic Attribution Card (Full Width Banner Across Bottom) */}
-      {lastResult && (
-        <div
-          className="card animate-in"
-          style={{
-            padding: '16px 20px',
-            border: `1px solid ${activeScObj.color}`,
-            boxShadow: `0 0 24px ${activeScObj.glow}`,
-          }}
-        >
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3" style={{ marginBottom: '12px' }}>
-            <div className="flex items-center gap-2">
-              <span style={{ color: activeScObj.color }}><Icon name="bolt" size={16} /></span>
-              <span className="font-bold text-xs text-mono" style={{ color: 'var(--text-primary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Session Attributed to Telemetry Index &amp; Broadcasted to Live Ingestion Pipeline
-              </span>
-            </div>
-            <span className="badge badge-clean text-mono" style={{ fontSize: '10px' }}>
-              RECORDED
-            </span>
-          </div>
-
-          <div className="grid grid-1 sm:grid-3 gap-3 text-xs text-mono" style={{ marginBottom: '12px' }}>
-            <div style={{ background: 'var(--bg-inset)', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }}>
-              <div className="text-muted" style={{ fontSize: '10px' }}>TARGET PORT</div>
-              <div className="font-bold text-primary" style={{ marginTop: '2px', fontSize: '14px' }}>{lastResult.port}</div>
-            </div>
-
-            <div style={{ background: 'var(--bg-inset)', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }}>
-              <div className="text-muted" style={{ fontSize: '10px' }}>SCENARIO ID</div>
-              <div className="font-bold" style={{ color: activeScObj.color, marginTop: '2px', fontSize: '14px' }}>
-                {lastResult.scenario.toUpperCase()}
-              </div>
-            </div>
-
-            <div style={{ background: 'var(--bg-inset)', padding: '10px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-xs)' }}>
-              <div className="text-muted" style={{ fontSize: '10px' }}>CIPHER TUNNEL</div>
-              <div className="font-bold text-primary truncate" style={{ marginTop: '2px', fontSize: '14px' }}>
-                {lastResult.cipher_info || 'Cleartext (Unencrypted)'}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex justify-between items-center pt-2 flex-wrap gap-2" style={{ borderTop: '1px solid var(--border)' }}>
-            <span className="text-xs text-muted" style={{ fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-              Broadcast channel: <code className="text-accent">/ws/live</code>
-            </span>
-
-            <div className="flex gap-2">
-              <Link
-                to="/ingest"
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: '11px', padding: '5px 12px' }}
-              >
-                Inspect in Live Ingest →
-              </Link>
-              <Link
-                to="/dashboard/sessions"
-                className="btn btn-outline btn-sm"
-                style={{ fontSize: '11px', padding: '5px 12px' }}
-              >
-                Inspect in Session Explorer →
-              </Link>
-            </div>
-          </div>
-        </div>
-      )}
+      </details>
 
       {/* CLI Directives Modal */}
       {showCliModal && (
-        <div className="live-modal-overlay" onClick={() => setShowCliModal(false)}>
+        <Modal label="Command-line instructions" onClose={() => setShowCliModal(false)}>
           <div className="live-modal-container" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-between items-center" style={{ marginBottom: '16px' }}>
               <div className="flex items-center gap-2">
@@ -751,7 +648,7 @@ export default function ClientDispatcher() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

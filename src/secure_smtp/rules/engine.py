@@ -364,6 +364,8 @@ class RuleEngine:
 
     def _compare(self, actual: Any, op: str, expected: str) -> bool:
         """Perform a comparison operation."""
+        if actual is None:
+            return False
         try:
             if op == "==":
                 if expected in ("true", "True"):

@@ -128,7 +128,7 @@ class ParsedHandshake:
     cipher_suite_negotiated: str = ""
     cipher_suite_id: int = 0
     key_exchange_type: KeyExchangeType = KeyExchangeType.UNKNOWN
-    forward_secrecy: bool = False
+    forward_secrecy: bool | None = None
     visibility_limited: bool = False
     extension_count: int = 0
     raw_certificates: list[bytes] = field(default_factory=list)

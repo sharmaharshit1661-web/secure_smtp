@@ -1,0 +1,6 @@
+{$PILOT_DOMAIN} {
+    @backend path /api/* /ws/*
+    reverse_proxy @backend backend:8000
+    reverse_proxy frontend:80
+    header Strict-Transport-Security "max-age=31536000"
+}

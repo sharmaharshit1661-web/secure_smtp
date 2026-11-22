@@ -27,21 +27,21 @@ def test_cors_preflight_allowed_origin():
     assert "content-type" in response.headers.get("access-control-allow-headers", "").lower()
 
 
-def test_cors_preflight_with_api_key_header():
-    """Verify that preflight OPTIONS request with X-API-Key header is accepted with 200 OK."""
+def test_cors_preflight_with_authorization_header():
+    """Verify that preflight OPTIONS request with Authorization header is accepted with 200 OK."""
     client = TestClient(app)
     response = client.options(
         "/api/hosts",
         headers={
             "Origin": "http://localhost:5173",
             "Access-Control-Request-Method": "GET",
-            "Access-Control-Request-Headers": "x-api-key, content-type",
+            "Access-Control-Request-Headers": "authorization, content-type",
         },
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
     allow_hdrs = response.headers.get("access-control-allow-headers", "").lower()
-    assert "x-api-key" in allow_hdrs or allow_hdrs == "*"
+    assert "authorization" in allow_hdrs or allow_hdrs == "*"
 
 
 def test_cors_actual_request_allowed_origin():
@@ -51,10 +51,9 @@ def test_cors_actual_request_allowed_origin():
         "/api/hosts",
         headers={
             "Origin": "http://localhost:5173",
-            "X-API-Key": "securesmtp_live_secret_key",
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 401
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
     assert response.headers.get("access-control-allow-credentials") == "true"
     assert "content-disposition" in response.headers.get("access-control-expose-headers", "").lower()

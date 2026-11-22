@@ -100,7 +100,7 @@ def run_smtp_client_session(
 
                 # Send post-TLS EHLO
                 log("send", f"EHLO {helo_name} (Encrypted)")
-                s.sendall(f"EHLO {helo_name}\r\n".encode("utf-8"))
+                s.sendall(f"EHLO {helo_name}\r\n".encode())
                 post_ehlo = s.recv(4096).decode("utf-8", errors="ignore").strip()
                 log("recv", post_ehlo)
             else:

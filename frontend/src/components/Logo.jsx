@@ -16,7 +16,7 @@ export default function Logo({ size = 24, className = '', style = {} }) {
         width="44"
         height="38"
         rx="6"
-        stroke="#10B981"
+        stroke="var(--accent)"
         strokeWidth="4"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -24,22 +24,22 @@ export default function Logo({ size = 24, className = '', style = {} }) {
       {/* Terminal Prompt >_ */}
       <path
         d="M14 20L22 26L14 32"
-        stroke="#10B981"
+        stroke="var(--accent)"
         strokeWidth="4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M27 32H35"
-        stroke="#10B981"
+        stroke="var(--accent)"
         strokeWidth="4"
         strokeLinecap="round"
       />
       {/* Overlapping Shield in Bottom Right */}
       <path
         d="M38 32V42C38 49 48 56 48 56C48 56 58 49 58 42V32L48 28L38 32Z"
-        fill="#0D0D0E"
-        stroke="#10B981"
+        fill="var(--bg-surface)"
+        stroke="var(--accent)"
         strokeWidth="4"
         strokeLinecap="round"
         strokeLinejoin="round"

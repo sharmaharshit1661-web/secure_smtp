@@ -1,122 +1,108 @@
-"""
-Analysis & PCAP Ingestion API Router.
+"""Bounded, owned PCAP assessments; one analysis process per pilot instance."""
 
-Handles PCAP file uploads, background batch processing, and job progress telemetry.
-"""
-
-from __future__ import annotations
-
-import logging
+import os
+import subprocess
+import sys
+import threading
 import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 
-from secure_smtp.api.auth import verify_api_key
-from secure_smtp.api.pipeline import run_pcap_analysis
-from secure_smtp.api.ratelimit import rate_limit
+from secure_smtp.api.auth import Principal, scope, verify_api_key
 from secure_smtp.config import get_settings
-from secure_smtp.db.models import AnalysisJob
-from secure_smtp.db.mongodb import (
-    get_jobs_col,
-    get_next_sequence,
-    serialize_doc,
-)
+from secure_smtp.db.mongodb import get_jobs_col, get_next_sequence, serialize_doc
+from secure_smtp.ingest.validation import validate_capture
 
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/api/analyze", tags=["Analysis"], dependencies=[Depends(verify_api_key)])
-
-# Recognized PCAP/PCAP-NG magic byte signatures
-PCAP_MAGIC_SIGNATURES = (
-    b"\xd4\xc3\xb2\xa1",  # Standard pcap (little endian microsecond)
-    b"\xa1\xb2\xc3\xd4",  # Standard pcap (big endian microsecond)
-    b"\x4d\x3c\xb2\xa1",  # Nanosecond pcap (little endian)
-    b"\xa1\xb2\x3c\x4d",  # Nanosecond pcap (big endian)
-    b"\x0a\x0d\x0d\x0a",  # PCAP-NG Section Header Block
-)
-
-CHUNK_SIZE = 64 * 1024  # 64 KB streaming chunks
+router = APIRouter(prefix="/api/analyze", tags=["Analysis"])
+_slot = threading.Lock()
 
 
-@router.post("", dependencies=[Depends(rate_limit(max_requests=15, window_seconds=60, scope="analyze_upload"))])
+def process_job(job_id: str, path: str):
+    settings = get_settings()
+    try:
+        # Hard deadline: a parser cannot hold the web process indefinitely.
+        subprocess.run(
+            [sys.executable, "-m", "secure_smtp.api.analysis_worker", job_id, path, str(os.getpid())],
+            check=True,
+            timeout=settings.analysis_timeout_seconds,
+        )
+    except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError):
+        get_jobs_col().update_one(
+            {"job_id": job_id, "status": {"$in": ["queued", "running"]}},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": "Analysis stopped: processing limit or worker failure.",
+                    "completed_at": datetime.now(UTC),
+                }
+            },
+        )
+    finally:
+        Path(path).unlink(missing_ok=True)
+        _slot.release()
+
+
+@router.post("")
 async def analyze_pcap(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    principal: Principal = Depends(verify_api_key),
 ) -> dict:
-    """Upload a PCAP file for asynchronous cryptographic posture analysis with streaming validation."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-
-    ext = Path(file.filename).suffix.lower()
-    if ext not in (".pcap", ".pcapng"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file format: {ext}. Expected .pcap or .pcapng",
-        )
-
     settings = get_settings()
-    upload_dir = settings.upload_dir
-    upload_dir.mkdir(parents=True, exist_ok=True)
-
-    job_id = str(uuid.uuid4())
-    pcap_path = upload_dir / f"{job_id}{ext}"
-    max_bytes = settings.max_upload_size_mb * 1024 * 1024
-    total_bytes = 0
-    header_bytes = bytearray()
-
-    # Stream file to disk in chunks to avoid memory spikes and validate signatures
-    try:
-        with open(pcap_path, "wb") as f:
-            while chunk := await file.read(CHUNK_SIZE):
-                total_bytes += len(chunk)
-                if total_bytes > max_bytes:
-                    pcap_path.unlink(missing_ok=True)
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"Uploaded file exceeds maximum allowable size of {settings.max_upload_size_mb} MB",
-                    )
-                if len(header_bytes) < 4:
-                    needed = 4 - len(header_bytes)
-                    header_bytes.extend(chunk[:needed])
-                f.write(chunk)
-    except HTTPException:
-        pcap_path.unlink(missing_ok=True)
-        raise
-    except Exception as err:
-        pcap_path.unlink(missing_ok=True)
-        logger.error("Failed to stream upload to disk: %s", err)
-        raise HTTPException(status_code=500, detail="Failed to save upload; check server logs")
-
-    # Validate PCAP magic bytes signature
-    if total_bytes < 4 or bytes(header_bytes[:4]) not in PCAP_MAGIC_SIGNATURES:
-        pcap_path.unlink(missing_ok=True)
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in (".pcap", ".pcapng"):
+        raise HTTPException(400, "Select a PCAP or PCAPNG capture")
+    if not _slot.acquire(blocking=False):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid capture format: file does not match PCAP or PCAPNG magic signature bytes.",
+            429,
+            "An assessment is already processing. Try again shortly.",
+            headers={"Retry-After": "10"},
         )
-
-    # Create analysis job record in MongoDB
-    jobs_col = get_jobs_col()
-    job = AnalysisJob(
-        id=get_next_sequence("job_id"),
-        job_id=job_id,
-        pcap_filename=file.filename,
-        status="queued",
-    )
-    jobs_col.insert_one(job.model_dump())
-
-    # Start background analysis
-    background_tasks.add_task(run_pcap_analysis, job_id, str(pcap_path))
-
-    return {"job_id": job_id, "status": "queued"}
+    job_id = str(uuid.uuid4())
+    path = settings.upload_dir / (job_id + ext)
+    scheduled = False
+    try:
+        settings.upload_dir.mkdir(parents=True, exist_ok=True)
+        size = 0
+        with path.open("xb") as target:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > settings.max_upload_bytes:
+                    raise HTTPException(413, "Capture exceeds the upload limit")
+                target.write(chunk)
+        try:
+            validate_capture(path, settings.max_capture_packets)
+        except (ValueError, OSError):
+            raise HTTPException(
+                400, "Invalid, empty, truncated, or oversized capture. Export a smaller valid PCAP."
+            ) from None
+        get_jobs_col().insert_one(
+            {
+                "id": get_next_sequence("job_id"),
+                "job_id": job_id,
+                "org_id": principal.org_id,
+                "owner_id": principal.user_id,
+                "pcap_filename": Path(file.filename).name,
+                "status": "queued",
+                "created_at": datetime.now(UTC),
+                "source_kind": "manual_capture",
+            }
+        )
+        background_tasks.add_task(process_job, job_id, str(path))
+        scheduled = True
+        return {"job_id": job_id, "status": "queued"}
+    finally:
+        await file.close()
+        if not scheduled:
+            path.unlink(missing_ok=True)
+            _slot.release()
 
 
 @router.get("/{job_id}/status")
-async def get_analysis_status(job_id: str) -> dict:
-    """Get the current execution status and error telemetry of an analysis job."""
-    jobs_col = get_jobs_col()
-    job = jobs_col.find_one({"job_id": job_id}, {"_id": 0})
+async def get_analysis_status(job_id: str, principal: Principal = Depends(verify_api_key)) -> dict:
+    job = get_jobs_col().find_one(scope(principal, {"job_id": job_id}), {"_id": 0})
     if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(404, "Job not found")
     return serialize_doc(job)

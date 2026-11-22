@@ -8,33 +8,28 @@ cryptographic forensic events to connected web consoles.
 from __future__ import annotations
 
 import asyncio
-import ipaddress
 import logging
-import secrets
 import time
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSocketDisconnect, status
-from pydantic import BaseModel, field_validator
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
-from secure_smtp.api.auth import verify_api_key
+from secure_smtp.api.auth import (
+    Principal,
+    require_admin,
+    require_lab_admin,
+    scope,
+    verify_api_key,
+    verify_token,
+)
 from secure_smtp.api.broker import get_connection_manager
-from secure_smtp.api.ratelimit import rate_limit
 from secure_smtp.config import get_settings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Live Monitoring"])
-
-
-
-def require_lab_enabled():
-    if not get_settings().enable_live_lab:
-        raise HTTPException(403, "Mail lab actions are disabled")
-
-
-ALLOWED_MAIL_PORTS = {25, 465, 587, 2525, 2526, 2527, 2528}
-BLOCKED_HOST_PREFIXES = ("169.254.", "metadata.", "127.0.0.1.nip.io")
 
 
 class CustomMailDispatchRequest(BaseModel):
@@ -47,83 +42,37 @@ class CustomMailDispatchRequest(BaseModel):
     body: str = "Confidential telemetry packet transmitted across network."
     client_name: str = "Interactive Web Client"
 
-    @field_validator("sender", "recipient", "subject", "client_name")
-    @classmethod
-    def validate_no_crlf(cls, v: str) -> str:
-        """Prevent SMTP Header Injection and CRLF injection vulnerabilities."""
-        if "\r" in v or "\n" in v:
-            raise ValueError("CRLF characters (\\r, \\n) are forbidden to prevent SMTP header injection.")
-        return v.strip()
-
-    @field_validator("port")
-    @classmethod
-    def validate_port(cls, v: int) -> int:
-        """Enforce strict port whitelist to mitigate SSRF port-scanning attacks."""
-        if v not in ALLOWED_MAIL_PORTS:
-            raise ValueError(f"Port {v} is not permitted. Permitted SMTP ports: {sorted(ALLOWED_MAIL_PORTS)}")
-        return v
-
-    @field_validator("server_ip")
-    @classmethod
-    def validate_server_ip(cls, v: str | None) -> str | None:
-        """Prevent SSRF attacks against cloud provider instance metadata endpoints."""
-        if not v:
-            return v
-        try:
-            address = ipaddress.ip_address(v.strip())
-        except ValueError:
-            raise ValueError("Use an explicitly permitted IP address; hostnames are not accepted")
-        allowed = {ipaddress.ip_address(ip.strip()) for ip in get_settings().dispatch_allowed_ips.split(",") if ip.strip()}
-        if address.is_link_local or address.is_multicast or address.is_unspecified or address not in allowed:
-            raise ValueError("Target IP is not in the dispatch allowlist")
-        return str(address)
-
-
 
 @router.websocket("/ws/live")
-async def websocket_live_endpoint(
-    websocket: WebSocket,
-    token: str | None = Query(None),
-) -> None:
+async def websocket_live_endpoint(websocket: WebSocket) -> None:
     """Real-time event stream for incoming packet analyses, simulated sessions, and security alerts."""
     settings = get_settings()
-
-    from secure_smtp.api.sessions_auth import check_origin, consume_ticket
-    try:
-        if websocket.headers.get("origin"):
-            check_origin(websocket.headers["origin"])
-        identity = consume_ticket(token)
-        # Header keys are for non-browser clients; never expose keys in URLs.
-        machine_key = websocket.headers.get("x-api-key")
-        expected = settings.api_key.strip()
-        machine_valid = bool(machine_key and expected and secrets.compare_digest(machine_key, expected))
-        if settings.is_production and (expected == "securesmtp_live_secret_key" or len(expected) < 32):
-            machine_valid = False
-        if not identity and not machine_valid:
-            raise HTTPException(401, "Authentication required")
-    except HTTPException:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Unauthorized")
+    origins = settings.cors_origins if getattr(settings, 'auth_provider', 'clerk') == 'keycloak' else settings.clerk_authorized_parties
+    if websocket.headers.get('origin') not in origins:
+        await websocket.close(code=4403)
         return
-
     manager = get_connection_manager()
-    await manager.connect(websocket)
-    deadline = time.monotonic() + 60
+    await websocket.accept()
     try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                break
-            data = await asyncio.wait_for(websocket.receive_text(), timeout=remaining)
-            if data == "ping":
-                await websocket.send_text("pong")
-    except (TimeoutError, WebSocketDisconnect):
+        message = await asyncio.wait_for(websocket.receive_text(), timeout=5)
+        if len(message) > 16400:
+            raise ValueError('Authentication message too large')
+        import json
+        payload = json.loads(message)
+        principal = await run_in_threadpool(verify_token, payload.get('token', ''))
+        await manager.connect(websocket, principal, accepted=True)
+        await websocket.send_json({'event': 'AUTHENTICATED'})
+        while time.time() < principal.expires_at:
+            data = await asyncio.wait_for(websocket.receive_text(), timeout=max(.01, principal.expires_at-time.time()))
+            if data == 'ping':
+                await websocket.send_text('pong')
+        await websocket.close(code=4401)
+    except WebSocketDisconnect:
         pass
+    except (TimeoutError, HTTPException, ValueError, TypeError, AttributeError):
+        await websocket.close(code=4401)
     finally:
         manager.disconnect(websocket)
-        try:
-            await websocket.close()
-        except RuntimeError:
-            pass
 
 
 @router.get("/api/live/status", dependencies=[Depends(verify_api_key)])
@@ -136,7 +85,6 @@ async def get_live_status() -> dict:
     return {
         "status": "active" if lab.is_running else "ready",
         "is_running": lab.is_running,
-        "max_upload_size_mb": get_settings().max_upload_size_mb,
         "lan_ip": get_local_ip(),
         "ports": {
             "plaintext": 2525,
@@ -148,7 +96,7 @@ async def get_live_status() -> dict:
     }
 
 
-@router.post("/api/live/start-lab", dependencies=[Depends(verify_api_key), Depends(require_lab_enabled)])
+@router.post("/api/live/start-lab", dependencies=[Depends(require_lab_admin)])
 async def start_lab_endpoint() -> dict:
     """Start the multi-port live SMTP server."""
     from secure_smtp.live.mail_server import get_live_lab
@@ -160,7 +108,7 @@ async def start_lab_endpoint() -> dict:
     return {"status": "already_running"}
 
 
-@router.post("/api/live/stop-lab", dependencies=[Depends(verify_api_key)])
+@router.post("/api/live/stop-lab", dependencies=[Depends(require_lab_admin)])
 async def stop_lab_endpoint() -> dict:
     """Stop the multi-port live SMTP server."""
     from secure_smtp.live.mail_server import get_live_lab
@@ -172,7 +120,7 @@ async def stop_lab_endpoint() -> dict:
     return {"status": "already_stopped"}
 
 
-@router.post("/api/live/simulate/{scenario}", dependencies=[Depends(verify_api_key), Depends(require_lab_enabled)])
+@router.post("/api/live/simulate/{scenario}", dependencies=[Depends(require_lab_admin)])
 async def simulate_scenario_endpoint(scenario: str) -> dict:
     """Trigger a live email traffic simulation and broadcast the forensic results in real-time."""
     from secure_smtp.live.generator import simulate_live_session
@@ -182,55 +130,47 @@ async def simulate_scenario_endpoint(scenario: str) -> dict:
         return session_event
     except Exception as e:
         logger.error("Simulation failed: %s", e)
-        raise HTTPException(status_code=500, detail="Simulation failed; check server logs")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post(
-    "/api/live/clear-history",
-    dependencies=[
-        Depends(verify_api_key),
-        Depends(require_lab_enabled),
-        Depends(rate_limit(max_requests=5, window_seconds=60, scope="clear_history")),
-    ],
-)
-async def clear_live_history() -> dict:
+@router.post("/api/live/clear-history", dependencies=[Depends(verify_api_key)])
+async def clear_live_history(principal: Principal = Depends(require_admin)) -> dict:
     """Clear all historical sessions and reset database for a fresh demonstration."""
     from secure_smtp.db.mongodb import get_hosts_col, get_sessions_col
 
     sessions_col = get_sessions_col()
     hosts_col = get_hosts_col()
 
-    s_res = sessions_col.delete_many({})
-    h_res = hosts_col.delete_many({})
+    s_res = sessions_col.delete_many(scope(principal, {"source_kind": "controlled_lab"}))
+    deleted_hosts = 0
+    for host in hosts_col.find(scope(principal, {"source_kind": "controlled_lab"})):
+        if not sessions_col.find_one(scope(principal, {"host_id": host["id"]})):
+            deleted_hosts += hosts_col.delete_one(scope(principal, {"id": host["id"]})).deleted_count
 
     # Broadcast reset event over WebSocket so all connected clients clear live tickers
     manager = get_connection_manager()
     await manager.broadcast({
         "event": "DATABASE_RESET",
+        "org_id": principal.org_id,
         "timestamp": datetime.now(UTC).isoformat(),
     })
 
     return {
         "status": "cleared",
         "deleted_sessions": s_res.deleted_count,
-        "deleted_hosts": h_res.deleted_count,
+        "deleted_hosts": deleted_hosts,
         "message": "Database reset to clean slate. Ready for live mail injection.",
     }
 
 
-@router.post(
-    "/api/live/dispatch-custom",
-    dependencies=[
-        Depends(verify_api_key),
-        Depends(require_lab_enabled),
-        Depends(rate_limit(max_requests=30, window_seconds=60, scope="dispatch_custom")),
-    ],
-)
+@router.post("/api/live/dispatch-custom", dependencies=[Depends(require_lab_admin)])
 async def dispatch_custom_mail(req: CustomMailDispatchRequest) -> dict:
     """Execute a real-time SMTP client connection and return the complete socket transcript."""
     from secure_smtp.live.client_dispatcher import execute_client_dispatch_async
 
     host = req.server_ip or "127.0.0.1"
+    if host != "127.0.0.1" or req.port not in (2525, 2526, 2527, 2528):
+        raise HTTPException(403, "Only the local controlled lab is an allowed destination")
     result = await execute_client_dispatch_async(
         host=host,
         port=req.port,

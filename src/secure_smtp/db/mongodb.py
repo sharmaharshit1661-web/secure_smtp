@@ -8,7 +8,6 @@ indexing, and document serialization helpers.
 from __future__ import annotations
 
 import logging
-import os
 import re
 import urllib.parse
 from datetime import datetime
@@ -173,8 +172,8 @@ def get_mongo_client(uri: str | None = None) -> MongoClient:
         target_uri = uri or get_active_mongo_uri()
         _client = MongoClient(
             target_uri,
-            serverSelectionTimeoutMS=15000,
-            connectTimeoutMS=10000,
+            serverSelectionTimeoutMS=5000,
+            connectTimeoutMS=5000,
             tz_aware=True,
         )
     return _client
@@ -183,7 +182,7 @@ def get_mongo_client(uri: str | None = None) -> MongoClient:
 def get_database(db_name: str | None = None) -> Database:
     """Get the active MongoDB database instance."""
     client = get_mongo_client()
-    return client[db_name or DATABASE_NAME]
+    return client[db_name or getattr(get_settings(), "mongo_db", DATABASE_NAME)]
 
 
 # ── Collection Accessors ──
@@ -234,7 +233,7 @@ def init_db_indexes() -> None:
     """Initialize performance and uniqueness indexes on collections."""
     try:
         hosts = get_hosts_col()
-        hosts.create_index([("ip_or_hostname", ASCENDING)], unique=True)
+        hosts.create_index([("org_id", ASCENDING), ("ip_or_hostname", ASCENDING)], unique=True)
         hosts.create_index([("id", ASCENDING)], unique=True)
         hosts.create_index([("aggregate_risk_score", DESCENDING)])
 
@@ -242,32 +241,29 @@ def init_db_indexes() -> None:
         sessions.create_index([("id", ASCENDING)], unique=True)
         sessions.create_index([("host_id", ASCENDING)])
         sessions.create_index([("pcap_source", ASCENDING)])
+        sessions.create_index([("org_id", ASCENDING), ("job_id", ASCENDING)])
 
         jobs = get_jobs_col()
         jobs.create_index([("job_id", ASCENDING)], unique=True)
+        db = get_database()
+        db.agents.create_index('agent_id', unique=True)
+        db.sessions.create_index([('agent_id', ASCENDING), ('event_id', ASCENDING)], unique=True, partialFilterExpression={'event_id': {'$type': 'string'}})
+        db.event_tombstones.create_index([('agent_id', ASCENDING), ('event_id', ASCENDING)], unique=True)
+        db.event_tombstones.create_index('expires_at', expireAfterSeconds=0)
+        db.audit.create_index([('org_id', ASCENDING), ('created_at', DESCENDING)])
+        db.alert_deliveries.create_index('dedupe_key', unique=True)
+        db.remediations.create_index([('org_id', ASCENDING), ('session_id', ASCENDING), ('rule_id', ASCENDING)], unique=True)
         logger.info("MongoDB indexes successfully created on database: %s", DATABASE_NAME)
-    except Exception as e:
-        logger.warning("Failed to initialize MongoDB indexes: %s", e)
+    except Exception:
+        logger.error("Failed to initialize MongoDB indexes")
+        raise
 
 
 def drop_database() -> None:
     """Drop the database — use for testing / clean wipe."""
     client = get_mongo_client()
-    try:
-        client.drop_database(DATABASE_NAME)
-        logger.info("MongoDB database '%s' dropped.", DATABASE_NAME)
-    except OperationFailure as e:
-        # Atlas cloud user accounts typically have readWrite rather than cluster-wide dropDatabase permissions.
-        # Fall back to wiping all collection documents cleanly.
-        logger.info("dropDatabase not permitted on cloud cluster (%s); clearing collections directly.", e)
-        db = client[DATABASE_NAME]
-        for col in db.list_collection_names():
-            if not col.startswith("system."):
-                try:
-                    db[col].delete_many({})
-                except Exception as clear_err:
-                    logger.debug("Could not clear collection %s: %s", col, clear_err)
-        logger.info("MongoDB collections in '%s' wiped clean.", DATABASE_NAME)
+    client.drop_database(DATABASE_NAME)
+    logger.info("MongoDB database '%s' dropped.", DATABASE_NAME)
 
 
 def serialize_doc(doc: dict[str, Any] | None) -> dict[str, Any] | None:

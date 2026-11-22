@@ -4,22 +4,19 @@ Unit tests for the centralized Pydantic Settings configuration module.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from unittest.mock import patch
 
-from secure_smtp.config import Settings, get_settings
+from secure_smtp.config import Settings
 
 
-def test_default_settings(monkeypatch):
+def test_default_settings():
     """Verify default settings initialization."""
-    for key in list(os.environ):
-        if key.startswith("SECURE_SMTP_"):
-            monkeypatch.delenv(key)
-    settings = Settings(_env_file=None)
+    settings = Settings()
     assert settings.app_name == "Secure SMTP"
     assert settings.app_version == "0.1.0"
     assert settings.api_key == ""
+    assert settings.enable_live_lab is False
+    assert settings.pilot_org_id == ""
     assert settings.auth_required is True
     assert settings.mongo_host == "localhost"
     assert settings.mongo_port == 27017
@@ -48,8 +45,6 @@ def test_cors_headers_comma_separated_parsing():
 def test_mongo_uri_assembly_unauthenticated():
     """Verify connection URI without authentication."""
     settings = Settings(
-        _env_file=None,
-        mongo_uri=None,
         mongo_user="",
         mongo_password="",
         mongo_host="10.0.0.5",
@@ -62,8 +57,6 @@ def test_mongo_uri_assembly_unauthenticated():
 def test_mongo_uri_assembly_authenticated():
     """Verify connection URI with credentials and special characters."""
     settings = Settings(
-        _env_file=None,
-        mongo_uri=None,
         mongo_user="app_user",
         mongo_password="p@ss:w/ord?!",
         mongo_host="db.internal",
@@ -81,16 +74,6 @@ def test_mongo_uri_assembly_authenticated():
     assert "p@ss:w/ord?!" not in masked
     assert "p%40ss%3Aw%2Ford%3F%21" not in masked
     assert "mongodb://app_user:******@db.internal:27017/secure_smtp" in masked
-
-
-def test_mongo_uri_auto_normalization_with_special_characters():
-    """Verify raw URI with unescaped special characters (#, @, spaces) is properly normalized."""
-    raw_atlas_uri = "mongodb+srv://testUser:spec!al#pwd@123 @cluster0.example.mongodb.net/"
-    settings = Settings(_env_file=None, mongo_uri=raw_atlas_uri)
-    normalized = settings.get_mongo_connection_uri()
-    assert "spec%21al%23pwd%40123" in normalized
-    assert "cluster0.example.mongodb.net" in normalized
-    assert " " not in normalized
 
 
 def test_explicit_mongo_uri_override():

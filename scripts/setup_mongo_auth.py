@@ -25,7 +25,7 @@ from pymongo import MongoClient
 from pymongo.errors import OperationFailure
 
 DEFAULT_USER = "secure_admin"
-DEFAULT_PASS = "secure_smtp_live_db_key_2026"
+DEFAULT_PASS = ""
 DEFAULT_DB = "secure_smtp"
 DEFAULT_AUTH_DB = "admin"
 DEFAULT_HOST = "localhost"
@@ -72,7 +72,10 @@ def parse_args():
         action="store_true",
         help="Verify connection with current credentials without modifying users",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if not args.password:
+        parser.error("Set SECURE_SMTP_MONGO_PASSWORD; a unique password is required")
+    return args
 
 
 def verify_credentials(host, port, user, password, database, auth_db):
@@ -178,10 +181,10 @@ def main():
     print("📋 Recommended Environment Variables for Secure SMTP:")
     print("=" * 65)
     print(f"export SECURE_SMTP_MONGO_USER=\"{args.user}\"")
-    print(f"export SECURE_SMTP_MONGO_PASSWORD=\"{args.password}\"")
+    print("Set SECURE_SMTP_MONGO_PASSWORD through your secret manager; password is not printed.")
     print(f"export SECURE_SMTP_MONGO_AUTH_DB=\"{args.auth_db}\"")
-    print(f"export SECURE_SMTP_MONGO_AUTH_MECHANISM=\"SCRAM-SHA-256\"")
-    print(f"export SECURE_SMTP_MONGO_AUTH_REQUIRED=\"true\"")
+    print("export SECURE_SMTP_MONGO_AUTH_MECHANISM=\"SCRAM-SHA-256\"")
+    print("export SECURE_SMTP_MONGO_AUTH_REQUIRED=\"true\"")
     print("=" * 65)
     print("Add these to your environment or startup scripts to enforce DB auth.\n")
 

@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 import logging
-from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -77,6 +76,14 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
         textColor=colors.HexColor("#0f172a"),
     )
 
+    from html import escape
+    def safe(value):
+        if isinstance(value, dict):
+            return {key: safe(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [safe(item) for item in value]
+        return escape(value) if isinstance(value, str) else value
+    data = safe(data)
     story = []
 
     # Title & Metadata
@@ -133,7 +140,7 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
             score = h.get("aggregate_risk_score", 0.0)
             status_text = "CRITICAL" if score >= 75 else "HIGH" if score >= 50 else "MEDIUM" if score >= 25 else "LOW"
             host_table_data.append([
-                Paragraph(escape(str(h.get("ip_or_hostname", ""))), body_style),
+                Paragraph(str(h.get("ip_or_hostname", "")), body_style),
                 Paragraph(str(h.get("session_count", 0)), body_style),
                 Paragraph(f"{score:.1f}", body_style),
                 Paragraph(status_text, bold_style),
@@ -164,13 +171,13 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
         s_title = f"{s.get('src_ip')}:{s.get('src_port')} → {s.get('dst_ip')}:{s.get('dst_port')} ({s.get('protocol', '').upper()})"
         risk = s.get("risk_score", {})
         r_score = risk.get("score", "N/A") if risk else "N/A"
-        story.append(Paragraph(f"<b>Session:</b> {escape(s_title)} — Risk Score: {escape(str(r_score))}", bold_style))
+        story.append(Paragraph(f"<b>Session:</b> {s_title} — Risk Score: {r_score}", bold_style))
 
         for f in findings:
-            sev = escape(str(f.get("severity", "info")).upper())
-            msg = escape(str(f.get("message", "")))
-            rec = escape(str(f.get("recommendation", "")))
-            f_text = f"• [<b>{sev}</b>] <b>{escape(str(f.get('rule_id', '')))}</b>: {msg}<br/>&nbsp;&nbsp;<i>Recommendation:</i> {rec}"
+            sev = str(f.get("severity", "info")).upper()
+            msg = f.get("message", "")
+            rec = f.get("recommendation", "")
+            f_text = f"• [<b>{sev}</b>] <b>{f.get('rule_id', '')}</b>: {msg}<br/>&nbsp;&nbsp;<i>Recommendation:</i> {rec}"
             story.append(Paragraph(f_text, body_style))
         story.append(Spacer(1, 4))
 
@@ -229,27 +236,15 @@ def generate_pdf_report(
     try:
         from weasyprint import HTML
 
-        html = HTML(filename=html_path)
+        def deny_resource(url, *args, **kwargs):
+            raise ValueError("Report resources must be embedded; external fetching is disabled")
+
+        html = HTML(filename=html_path, url_fetcher=deny_resource)
         html.write_pdf(str(output))
         logger.info("Generated PDF report with WeasyPrint: %s", output)
         return str(output)
     except Exception as e:
         logger.info("WeasyPrint not used (%s), using ReportLab fallback", e)
 
-    # 3. Safe fallback
-    try:
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import Paragraph, SimpleDocTemplate
-
-        doc = SimpleDocTemplate(str(output), pagesize=letter)
-        styles = getSampleStyleSheet()
-        doc.build([
-            Paragraph("Secure SMTP Assessment Report", styles["Heading1"]),
-            Paragraph("Please refer to the accompanying HTML and JSON reports.", styles["Normal"]),
-        ])
-    except Exception:
-        with open(output, "wb") as f:
-            f.write(b"%PDF-1.4\n% Secure SMTP Report Placeholder\n%%EOF")
-
-    return str(output)
+    output.unlink(missing_ok=True)
+    raise RuntimeError("PDF rendering failed; no placeholder report was created")

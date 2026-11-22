@@ -11,8 +11,12 @@ import RulesCompliance from './pages/RulesCompliance';
 import AiSecurity from './pages/AiSecurity';
 import SignInPage from './pages/SignInPage';
 import SignUpPage from './pages/SignUpPage';
+import Operations from './pages/Operations';
 import LandingPage from './pages/LandingPage';
-import { clerkAppearance } from './config/clerkAppearance';
+import { getClerkAppearance } from './config/clerkAppearance';
+
+import OfflineProvider from './context/OfflineProvider';
+import { useTheme } from './hooks/useTheme';
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 const isClerkEnabled = Boolean(PUBLISHABLE_KEY && !PUBLISHABLE_KEY.includes('YOUR_KEY'));
@@ -37,6 +41,7 @@ function AppRoutes() {
         <Route path="ingest" element={<LiveIngest />} />
         <Route path="client" element={<ClientDispatcher />} />
         <Route path="rules" element={<RulesCompliance />} />
+        <Route path="operations" element={<Operations />} />
         <Route path="ai-security" element={<AiSecurity />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
@@ -46,6 +51,7 @@ function AppRoutes() {
 
 function AuthProviderWrapper() {
   const navigate = useNavigate();
+  const { theme } = useTheme();
 
   if (!isClerkEnabled) {
     return (
@@ -60,7 +66,7 @@ function AuthProviderWrapper() {
       publishableKey={PUBLISHABLE_KEY}
       routerPush={(to) => navigate(to)}
       routerReplace={(to) => navigate(to, { replace: true })}
-      appearance={clerkAppearance}
+      appearance={getClerkAppearance(theme)}
     >
       <ClerkAuthProvider>
         <AppRoutes />
@@ -70,6 +76,10 @@ function AuthProviderWrapper() {
 }
 
 export default function App() {
+  if (import.meta.env.VITE_AUTH_PROVIDER === 'keycloak') {
+    // Keycloak consumes the OAuth callback URL before the router reads it.
+    return <OfflineProvider><BrowserRouter><AppRoutes /></BrowserRouter></OfflineProvider>;
+  }
   return (
     <BrowserRouter>
       <AuthProviderWrapper />
