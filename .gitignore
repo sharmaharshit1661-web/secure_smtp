@@ -66,3 +66,6 @@ PRODUCTION_READY.md
 *.env
 !.env.example
 !.env.offline.example
+
+# Clerk CLI local application/claim state
+.clerk/

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", ".env.clerk-local"),
         env_file_encoding="utf-8",
         extra="ignore",
         case_sensitive=False,
@@ -60,6 +60,7 @@ class Settings(BaseSettings):
     clerk_issuer: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_ISSUER")
     clerk_audience: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_AUDIENCE")
     clerk_authorized_parties: list[str] = Field(default_factory=list, validation_alias="SECURE_SMTP_CLERK_AUTHORIZED_PARTIES")
+    public_registration: bool = Field(default=True, validation_alias="SECURE_SMTP_PUBLIC_REGISTRATION")
     pilot_org_id: str = Field(default="", validation_alias="SECURE_SMTP_PILOT_ORG_ID")
     max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024, validation_alias="SECURE_SMTP_MAX_UPLOAD_BYTES")
     max_capture_packets: int = Field(default=100000, ge=1, validation_alias="SECURE_SMTP_MAX_CAPTURE_PACKETS")

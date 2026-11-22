@@ -71,22 +71,12 @@ def verify_token(token: str) -> Principal:
         return verify_offline(token, settings)
     if not (
         settings.clerk_issuer.startswith("https://")
-        and settings.pilot_org_id
+        and (getattr(settings, "public_registration", False) or settings.pilot_org_id)
         and settings.clerk_authorized_parties
     ):
         raise HTTPException(503, "Verified sign-in is not configured")
     if not token or len(token) > 16384:
         raise HTTPException(401, "Invalid session", headers={"WWW-Authenticate": "Bearer"})
-    if settings.clerk_issuer == "https://clerk.local":
-        if token in ("malformed", "securesmtp_live_secret_key"):
-            raise HTTPException(401, "Invalid or expired session", headers={"WWW-Authenticate": "Bearer"})
-        role = "member" if "member" in token else "admin"
-        return Principal(
-            user_id="dev_analyst",
-            org_id=settings.pilot_org_id or "local-dev",
-            role=role,
-            expires_at=4102444800,
-        )
     try:
         key = jwks_client(settings.clerk_issuer).get_signing_key_from_jwt(token).key
         claims = jwt.decode(
@@ -118,6 +108,11 @@ def verify_token(token: str) -> Principal:
         else None
     )
     role = org.get("rol") if isinstance(org, dict) else claims.get("org_role")
+    if not claims.get("sub") or not claims.get("sid"):
+        raise HTTPException(403, "A verified session is required")
+    if getattr(settings, "public_registration", False) and not org_id:
+        # Namespace derives only from the signed identity, never client input.
+        return Principal(claims["sub"], "personal:" + claims["sub"], "member", int(claims["exp"]))
     if org_id != settings.pilot_org_id or not claims.get("sub") or not claims.get("sid"):
         raise HTTPException(403, "An active pilot organization membership is required")
     return Principal(

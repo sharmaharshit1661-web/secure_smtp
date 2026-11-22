@@ -247,3 +247,40 @@ def test_keycloak_malformed_roles_fail_closed(identity, monkeypatch, resources):
     with pytest.raises(HTTPException) as denied:
         auth.verify_token(identity.sign(claims))
     assert denied.value.status_code == 403
+
+
+def test_local_issuer_does_not_bypass_signature_verification(identity, monkeypatch):
+    identity.settings.clerk_issuer = 'https://clerk.local'
+    class RejectUnsigned:
+        def get_signing_key_from_jwt(self, token):
+            raise jwt.PyJWTError('Not a signed session')
+    monkeypatch.setattr(auth, 'jwks_client', lambda issuer: RejectUnsigned())
+    for token in ['local-admin-session', 'local-member-session', 'anything']:
+        assert_rejected(token, 401)
+
+
+@pytest.mark.parametrize('version', [1, 2])
+def test_public_registration_uses_private_member_workspace(identity, version):
+    identity.settings.public_registration = True
+    identity.settings.pilot_org_id = ''
+    claims = {k: v for k, v in identity.claims.items() if k not in ('org_id', 'org_role')}
+    claims['v'] = version
+    first = auth.verify_token(identity.sign(claims))
+    second = auth.verify_token(identity.sign({**claims, 'sub': 'user_other', 'org_role': 'org:admin'}))
+    assert first.org_id == 'personal:user_analyst'
+    assert second.org_id == 'personal:user_other'
+    assert first.role == second.role == 'member'
+    assert auth.scope(first) != auth.scope(second)
+
+
+def test_public_signup_does_not_grant_pilot_or_admin_access(identity, client):
+    identity.settings.public_registration = True
+    claims = {k: v for k, v in identity.claims.items() if k not in ('org_id', 'org_role')}
+    headers = {'Authorization': 'Bearer ' + identity.sign(claims)}
+    assert client.get('/protected', headers=headers).json()['org_id'] != 'org_pilot'
+    assert client.post('/admin', headers=headers).status_code == 403
+    assert client.post('/lab', headers=headers).status_code == 403
+    with pytest.raises(HTTPException):
+        auth.verify_token(identity.sign({**claims, 'org_id': 'org_other'}))
+    with pytest.raises(HTTPException):
+        auth.verify_token(identity.sign({**claims, 'sts': 'pending'}))

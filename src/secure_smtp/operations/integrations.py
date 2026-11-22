@@ -17,6 +17,11 @@ def sync_graph(org_id, job_id):
     rows = [{'id': s['id'], 'host_id': s['host_id'], 'host': s['dst_ip'],
              'rules': [f['rule_id'] for f in s.get('findings', [])]} for s in sessions]
     with GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password), connection_timeout=5) as driver:
+        # Composite uniqueness keeps retries/concurrent syncs from duplicating evidence.
+        for label, field in [('MailHost', 'id'), ('MailSession', 'id'), ('Weakness', 'rule_id')]:
+            driver.execute_query(
+                f'CREATE CONSTRAINT secure_smtp_{label.lower()} IF NOT EXISTS '
+                f'FOR (n:{label}) REQUIRE (n.org_id, n.{field}) IS UNIQUE')
         driver.execute_query('''UNWIND $rows AS row
             MERGE (h:MailHost {org_id:$org, id:row.host_id}) SET h.address=row.host
             MERGE (s:MailSession {org_id:$org, id:row.id}) SET s.job_id=$job
@@ -33,7 +38,7 @@ def graph_shared_weaknesses(org_id):
     from neo4j import GraphDatabase
     with GraphDatabase.driver(settings.neo4j_uri, auth=(settings.neo4j_user, settings.neo4j_password), connection_timeout=5) as driver:
         records, _, _ = driver.execute_query('''MATCH (h:MailHost {org_id:$org})-[:OBSERVED]->(s:MailSession {org_id:$org})-[:EXHIBITS]->(f:Weakness {org_id:$org})
-            WITH f.rule_id AS rule, collect(DISTINCT h.address) AS hosts, collect(DISTINCT s.id) AS sessions
+            WITH f.rule_id AS rule, collect(DISTINCT h.address) AS hosts, collect(DISTINCT s.id)[..100] AS sessions
             WHERE size(hosts)>1 RETURN rule, hosts, sessions LIMIT 100''', org=org_id)
         return {'status': 'synced', 'groups': [dict(record) for record in records]}
 

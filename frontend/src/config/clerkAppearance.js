@@ -1,4 +1,4 @@
-import { dark } from '@clerk/themes';
+import { dark } from '@clerk/ui/themes';
 
 /** Shared authentication styling, including Clerk's dialogs and account popover. */
 const elements = {
@@ -17,7 +17,7 @@ const elements = {
 const appearances = Object.fromEntries(['light', 'dark'].map(theme => {
   const isDark = theme === 'dark';
   return [theme, {
-    baseTheme: isDark ? dark : undefined,
+    theme: isDark ? dark : undefined,
     variables: {
       colorPrimary: isDark ? '#bcf56a' : '#13251f',
       colorPrimaryForeground: isDark ? '#13251f' : '#f5f7f1',

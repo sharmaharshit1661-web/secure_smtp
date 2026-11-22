@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { SignedIn, SignedOut, UserButton, OrganizationSwitcher } from '@clerk/clerk-react';
+import { Show, UserButton, OrganizationSwitcher } from '@clerk/react';
 import Sidebar from './Sidebar';
 import Icon from './Icon';
 import { getHosts } from '../api/client';
@@ -135,14 +135,11 @@ export default function Layout() {
             {/* Authentication Header Controls */}
             {isClerkEnabled ? (
               <div className="flex items-center gap-2">
-                <SignedIn>
+                <Show when="signed-in">
                   <OrganizationSwitcher hidePersonal />
-                  <UserButton
-                    afterSignOutUrl="/"
-
-                  />
-                </SignedIn>
-                <SignedOut>
+                  <UserButton />
+                </Show>
+                <Show when="signed-out">
                   <Link
                     to="/sign-in"
                     className="btn btn-primary btn-sm"
@@ -154,7 +151,7 @@ export default function Layout() {
                   >
                     Sign In
                   </Link>
-                </SignedOut>
+                </Show>
               </div>
             ) : user ? (
               <div className="flex items-center gap-2">

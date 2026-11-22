@@ -1,0 +1,11 @@
+{
+  "planning": "compact",
+  "context_depth": "dependency",
+  "verification_depth": "impact",
+  "delegation": "none",
+  "reason_codes": [
+    "unsupported-auth-sdk",
+    "shared-provider"
+  ],
+  "decision": "Upgrade Clerk React and UI packages with documented component, theme, and redirect changes; preserve verified backend authentication. Validate frontend build, lint, tests and dependency audit; browser signup remains unverified."
+}

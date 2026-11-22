@@ -62,3 +62,11 @@ Validation after simplification: production build, lint, 14 logic tests, and whi
 - Slightly darkened muted light-theme text after a contrast check found 4.44:1 against the elevated surface.
 
 Validation: production build and lint pass; all 19 tests pass, including preference precedence, persistence, unavailable storage, pre-paint/runtime consistency, and palette contrast in both themes. These are source and logic checks; browser interaction and rendered desktop/mobile verification remain blocked by the saved browser permission policy. No new design-hook suppressions were added.
+
+## Interaction hardening - 22 November 2026
+
+Confirmed fixes: bounded API response wait (30 seconds, 180 seconds for capture upload), readable FastAPI field-validation and service errors, cancellation preservation, report-download busy/disabled state, 4,000-character question limits, session-required AI actions and a link to upload from the empty AI workspace. Existing public Clerk registration remains protected by backend identity verification.
+
+Verification: 25 frontend logic tests pass, including timeout/cancellation/error formatting; frontend lint and default/offline builds pass. Tests cover missing/unknown chart values, donut tier counts, theme persistence and token contrast, authentication headers, capture validation and polling. These are logic checks, not rendered browser interaction results.
+
+Rendered acceptance remains BLOCKED: the CUA browser tool again returned "Local browser access is unavailable for this chat." No alternate browser automation was used to bypass that restriction. Every-button, responsive layout, focus order, actual chart rendering/animation and real Clerk/Neo4j end-to-end checks cannot honestly be marked complete. The earlier generated-offline dark-glow warning remains unsuppressed pending rendered inspection; source styles include legacy shadows overridden by reference-theme rules, so blanket suppression is not justified.

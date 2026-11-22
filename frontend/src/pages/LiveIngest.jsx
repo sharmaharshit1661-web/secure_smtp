@@ -34,6 +34,14 @@ export default function LiveIngest() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState('');
   const [resultJobId, setResultJobId] = useState('');
+  const [downloading, setDownloading] = useState('');
+  async function saveReport(format) {
+    if (downloading) return;
+    setDownloading(format); setError(null);
+    try { await downloadReport(resultJobId, format); }
+    catch (failure) { setError(failure.message); }
+    finally { setDownloading(''); }
+  }
   const [error, setError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
   const [wsConnected, setWsConnected] = useState(false);
@@ -290,7 +298,7 @@ export default function LiveIngest() {
           {uploading && <p role="status" className="text-secondary text-sm">{uploadProgress || 'Checking analysis…'}</p>}
           <div className="simple-divider simple-stack">
             <div className="simple-row"><h2>Reports</h2>{resultJobId && <button className="text-action" onClick={() => navigate('/dashboard/sessions')}>View sessions →</button>}</div>
-            {resultJobId ? <div className="ui-toolbar">{['pdf', 'html', 'json'].map(format => <button className="btn btn-outline" onClick={() => downloadReport(resultJobId, format).catch(error => setError(error.message))} key={format}><Icon name="download" size={14} />{format.toUpperCase()}</button>)}</div> : <p className="text-secondary text-sm">Available after your first completed analysis.</p>}
+            {resultJobId ? <div className="ui-toolbar">{['pdf', 'html', 'json'].map(format => <button className="btn btn-outline" disabled={Boolean(downloading)} onClick={() => saveReport(format)} key={format}><Icon name="download" size={14} />{downloading === format ? 'Downloading…' : format.toUpperCase()}</button>)}</div> : <p className="text-secondary text-sm">Available after your first completed analysis.</p>}
           </div>
         </section>
         <section className="card simple-stack">

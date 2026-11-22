@@ -57,7 +57,7 @@ COPY src/ /app/src/
 COPY pyproject.toml /app/
 
 # Create runtime directories with appropriate permissions
-RUN mkdir -p /tmp/secure_smtp_uploads /tmp/secure_smtp_reports && \
+RUN mkdir -p /app/storage /tmp/secure_smtp_uploads /tmp/secure_smtp_reports && \
     chown -R securesmtp:securesmtp /tmp/secure_smtp_uploads /tmp/secure_smtp_reports /app
 
 USER securesmtp

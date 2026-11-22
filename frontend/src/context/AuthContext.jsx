@@ -1,6 +1,6 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUser, useClerk, useAuth as useClerkAuth } from '@clerk/clerk-react';
+import { useUser, useClerk, useAuth as useClerkAuth } from '@clerk/react';
 
 import { configureTokenProvider } from '../api/client';
 
@@ -15,62 +15,10 @@ export function useAuth() {
   return ctx;
 }
 
-// Local / evaluation mode provides persistent demo session when Clerk is unconfigured
+// Missing configuration never grants a demo identity.
 export function LocalAuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('secure_smtp_demo_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-
-  const orgId = 'local-dev';
-
-  useEffect(() => {
-    if (user) {
-      const token = user.role === 'admin' ? 'local-admin-session' : 'local-member-session';
-      configureTokenProvider(async () => token);
-    } else {
-      configureTokenProvider(null);
-    }
-    return () => configureTokenProvider(null);
-  }, [user]);
-
-  const login = (userData) => {
-    const u = userData || {
-      name: 'SOC Lead Administrator',
-      email: 'analyst@corp.io',
-      role: 'admin',
-      clearance: 'Level 4 SOC Administrator',
-    };
-    try {
-      localStorage.setItem('secure_smtp_demo_user', JSON.stringify(u));
-    } catch {}
-    setUser(u);
-  };
-
-  const logout = () => {
-    try {
-      localStorage.removeItem('secure_smtp_demo_user');
-    } catch {}
-    setUser(null);
-    configureTokenProvider(null);
-  };
-
-  const value = {
-    isAuthenticated: Boolean(user),
-    user,
-    login,
-    logout,
-    isClerkEnabled: false,
-    isLoaded: true,
-    orgId: user ? orgId : null,
-    offline: false,
-  };
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ isAuthenticated: false, isLoaded: true,
+    isClerkEnabled: false, user: null, orgId: null }}>{children}</AuthContext.Provider>;
 }
 
 export function ClerkAuthProvider({ children }) {

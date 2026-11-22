@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from secure_smtp.api.main import DEFAULT_CORS_ORIGINS, app
+from secure_smtp.api.main import app
+from secure_smtp.config import Settings
 
 
 def test_cors_preflight_allowed_origin():
@@ -73,8 +74,10 @@ def test_cors_untrusted_origin_rejected():
     assert response.headers.get("access-control-allow-origin") is None
 
 
-def test_default_cors_origins_contain_local_dev_ports():
+def test_default_cors_origins_contain_local_dev_ports(monkeypatch):
     """Verify default CORS list contains standard Vite and API ports."""
-    assert "http://localhost:5173" in DEFAULT_CORS_ORIGINS
-    assert "http://127.0.0.1:5173" in DEFAULT_CORS_ORIGINS
-    assert "http://localhost:8000" in DEFAULT_CORS_ORIGINS
+    monkeypatch.delenv("SECURE_SMTP_CORS_ORIGINS", raising=False)
+    defaults = Settings(_env_file=None).cors_origins
+    assert "http://localhost:5173" in defaults
+    assert "http://127.0.0.1:5173" in defaults
+    assert "http://localhost:8000" in defaults

@@ -1,0 +1,44 @@
+# Backend only. Frontend is deployed from the repository root on Vercel.
+# Persistent disks require a paid Render service. Review cost before creation.
+services:
+  - type: web
+    name: secure-smtp-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.backend
+    dockerContext: .
+    plan: standard
+    numInstances: 1
+    healthCheckPath: /api/health
+    disk:
+      name: smtp-reports
+      mountPath: /app/storage
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "8000"
+      - key: SECURE_SMTP_AUTH_PROVIDER
+        value: clerk
+      - key: SECURE_SMTP_PUBLIC_REGISTRATION
+        value: "true"
+      - key: SECURE_SMTP_CLERK_ISSUER
+        sync: false
+      - key: SECURE_SMTP_CLERK_AUTHORIZED_PARTIES
+        sync: false
+      - key: SECURE_SMTP_CORS_ORIGINS
+        sync: false
+      - key: SECURE_SMTP_MONGO_URI
+        sync: false
+      - key: SECURE_SMTP_MONGO_DB
+        value: secure_smtp_pilot
+      - key: SECURE_SMTP_MONGO_AUTH_REQUIRED
+        value: "true"
+      - key: SECURE_SMTP_ENABLE_LIVE_LAB
+        value: "false"
+      - key: SECURE_SMTP_ALERTS_ENABLED
+        value: "false"
+      - key: SECURE_SMTP_REPORTS_DIR
+        value: /app/storage/reports
+      - key: SECURE_SMTP_UPLOAD_DIR
+        value: /tmp/secure_smtp_uploads
+      - key: SECURE_SMTP_RETENTION_DAYS
+        value: "30"

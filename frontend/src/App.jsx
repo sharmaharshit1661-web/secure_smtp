@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
-import { ClerkProvider } from '@clerk/clerk-react';
+import { ClerkProvider } from '@clerk/react';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ClerkAuthProvider, LocalAuthProvider } from './context/AuthContext';
@@ -64,6 +64,7 @@ function AuthProviderWrapper() {
   return (
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
+      afterSignOutUrl="/"
       routerPush={(to) => navigate(to)}
       routerReplace={(to) => navigate(to, { replace: true })}
       appearance={getClerkAppearance(theme)}

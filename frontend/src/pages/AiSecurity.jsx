@@ -1,4 +1,5 @@
 import Notice from '../components/Notice';
+import { Link } from 'react-router-dom';
 import useClipboard from '../hooks/useClipboard';
 import { useState, useEffect, useRef } from 'react';
 import {
@@ -93,7 +94,7 @@ export default function AiSecurity() {
 
   const handleAskQuestion = async (qText) => {
     const q = qText || queryInput;
-    if (!q || !q.trim() || chatLoading) return;
+    if (!q || !q.trim() || chatLoading || !selectedSessionId) return;
 
     setChatLog((prev) => [
       ...prev,
@@ -195,6 +196,7 @@ export default function AiSecurity() {
       </select></label>
       <div className="ui-segmented" role="group" aria-label="AI tools">{[['chat', 'Ask AI'], ['config', 'Configuration'], ['briefing', 'Briefing']].map(([id, label]) => <button key={id} type="button" aria-pressed={toolView === id} onClick={() => setToolView(id)}>{label}</button>)}</div>
     </div>
+    {!overviewLoading && !selectedSessionId && <p className="simple-empty">Upload a capture before asking about its security. <Link to="/dashboard/ingest">Analyze a capture</Link></p>}
     {toolView === 'chat' && <section className="card simple-stack">
       <div className="simple-row"><h2>Ask about your security</h2><button className="text-action" disabled={chatLoading || chatLog.length < 2} onClick={() => setChatLog([chatLog[0]])}>Clear conversation</button></div>
       <div ref={chatContainerRef} className="simple-chat" role="log" aria-label="Conversation" aria-live="polite">
@@ -204,8 +206,8 @@ export default function AiSecurity() {
         </article>)}
         {chatLoading && <p role="status" className="text-secondary text-sm">Preparing an answer…</p>}
       </div>
-      <div className="ui-toolbar">{SUGGESTED_QUESTIONS.slice(0, 3).map(question => <button className="btn btn-outline" key={question.label} disabled={chatLoading} onClick={() => handleAskQuestion(question.query)}>{question.label}</button>)}</div>
-      <form className="simple-chat-form" onSubmit={event => { event.preventDefault(); handleAskQuestion(); }}><label className="sr-only" htmlFor="ai-question">Your question</label><input id="ai-question" className="input" value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Ask a question…" disabled={chatLoading} /><button className="btn btn-primary" disabled={chatLoading || !queryInput.trim()}>Send</button></form>
+      <div className="ui-toolbar">{SUGGESTED_QUESTIONS.slice(0, 3).map(question => <button className="btn btn-outline" key={question.label} disabled={chatLoading || !selectedSessionId} onClick={() => handleAskQuestion(question.query)}>{question.label}</button>)}</div>
+      <form className="simple-chat-form" onSubmit={event => { event.preventDefault(); handleAskQuestion(); }}><label className="sr-only" htmlFor="ai-question">Your question</label><input id="ai-question" className="input" maxLength={4000} value={queryInput} onChange={event => setQueryInput(event.target.value)} placeholder="Ask a question…" disabled={chatLoading || !selectedSessionId} /><button className="btn btn-primary" disabled={chatLoading || !selectedSessionId || !queryInput.trim()}>Send</button></form>
     </section>}
     {toolView === 'config' && <section className="card simple-stack">
       <div className="simple-row"><h2>Suggested configuration</h2><div className="ui-toolbar"><label className="sr-only" htmlFor="ai-daemon">Mail server software</label><select id="ai-daemon" className="select" value={serverType} onChange={event => setServerType(event.target.value)}>{DAEMONS.map(daemon => <option key={daemon.id} value={daemon.id}>{daemon.name}</option>)}</select><button className="btn btn-primary" disabled={remediationLoading || !selectedSessionId} onClick={() => handleGenerateRemediation()}>{remediationLoading ? 'Generating…' : 'Generate'}</button></div></div>

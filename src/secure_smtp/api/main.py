@@ -64,8 +64,9 @@ async def lifespan(app: FastAPI):
         if job.get("org_id"):
             query["org_id"] = job["org_id"]
         get_sessions_col().update_many(query, {"$set": {"published": True}})
-    if get_settings().pilot_org_id:
-        refresh_hosts(get_settings().pilot_org_id)
+    for workspace in get_jobs_col().distinct('org_id'):
+        if isinstance(workspace, str) and workspace:
+            refresh_hosts(workspace)
 
     # Ensure upload and reports directories exist
     settings = get_settings()
@@ -94,15 +95,22 @@ async def lifespan(app: FastAPI):
         from secure_smtp.db.mongodb import get_database
         from secure_smtp.operations.lifecycle import enforce_retention
         while True:
-            if settings.pilot_org_id:
+            try:
+                workspaces = await run_in_threadpool(lambda: get_jobs_col().distinct('org_id'))
+            except Exception:
+                logger.error("Retention workspace discovery failed")
+                workspaces = []
+            for workspace in workspaces:
+                if not isinstance(workspace, str) or not workspace:
+                    continue
                 try:
-                    deleted = await run_in_threadpool(enforce_retention, settings.pilot_org_id)
+                    deleted = await run_in_threadpool(enforce_retention, workspace)
                     status = {"status": "healthy", "deleted": deleted}
                 except Exception:
                     status = {"status": "failed", "error": "Retention cleanup failed; administrator review required"}
                 try:
                     await run_in_threadpool(lambda: get_database().operations.update_one(
-                        {"org_id": settings.pilot_org_id, "kind": "retention"},
+                        {"org_id": workspace, "kind": "retention"},
                         {"$set": {**status, "checked_at": datetime.now(UTC)}}, upsert=True))
                 except Exception:
                     logger.error("Retention status could not be persisted")

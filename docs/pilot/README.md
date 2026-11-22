@@ -1,5 +1,7 @@
 # Secure SMTP pilot readiness
 
+Public Clerk registration is now supported. See [public registration and login](PUBLIC_REGISTRATION.md); it supersedes the invitation-only descriptions below for personal accounts.
+
 Local automated checks and isolated recovery rehearsals passed on 2026-11-22. This is not deployment approval. See [the current security audit](SECURITY_AUDIT.md) for evidence and open release gates.
 
 ## How people sign in

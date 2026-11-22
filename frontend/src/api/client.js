@@ -1,3 +1,4 @@
+import { errorMessage, fetchWithDeadline } from './transport.js';
 /**
  * Fetch wrapper for the Secure SMTP FastAPI backend.
  */
@@ -9,7 +10,7 @@ let tokenProvider = null;
 export function configureTokenProvider(provider) { tokenProvider = provider; }
 export async function getAccessToken() {
   const token = await tokenProvider?.();
-  if (!token) throw new Error('Sign in with your pilot account to continue.');
+  if (!token) throw new Error('Sign in to continue.');
   return token;
 }
 export function getLiveSocketUrl() {
@@ -21,7 +22,7 @@ export function getLiveSocketUrl() {
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
-  const res = await fetch(url, {
+  const res = await fetchWithDeadline(url, {
     ...options,
     headers: {
       'Authorization': `Bearer ${await getAccessToken()}`,
@@ -30,7 +31,7 @@ async function request(path, options = {}) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const error = new Error(body.detail || `API error: ${res.status}`);
+    const error = new Error(errorMessage(body.detail, res.status));
     error.status = res.status;
     throw error;
   }
@@ -61,27 +62,27 @@ export async function uploadPcap(file) {
   const formData = new FormData();
   formData.append('file', file);
   const url = `${API_BASE}/api/analyze`;
-  const res = await fetch(url, {
+  const res = await fetchWithDeadline(url, {
     method: 'POST',
     body: formData,
     headers: {
       'Authorization': `Bearer ${await getAccessToken()}`,
     },
-  });
+  }, 180000);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `Upload failed: ${res.status}`);
+    throw new Error(errorMessage(body.detail, res.status));
   }
   return res.json();
 }
 
 export async function downloadReport(jobId, format) {
-  const response = await fetch(`${API_BASE}/api/reports/${encodeURIComponent(jobId)}.${format}`, {
+  const response = await fetchWithDeadline(`${API_BASE}/api/reports/${encodeURIComponent(jobId)}.${format}`, {
     headers: { Authorization: `Bearer ${await getAccessToken()}` },
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Report download failed: ${response.status}`);
+    throw new Error(errorMessage(body.detail, response.status));
   }
   const url = URL.createObjectURL(await response.blob());
   const anchor = document.createElement('a');

@@ -79,7 +79,7 @@ export default function LandingPage() {
 
           <h1>Email security<br />without the<br />blind spots.</h1>
           <p className="cipher-lead">Find weak encryption, inspect certificates, and understand your mail security risks.</p>
-          <div className="cipher-actions"><Link to={consolePath} className="cipher-button">Explore the console<Arrow /></Link><a href="#platform" className="cipher-text-link">See the platform <span aria-hidden="true">→</span></a></div>
+          <div className="cipher-actions"><Link to={isAuthenticated ? consolePath : "/sign-up"} className="cipher-button">{isAuthenticated ? "Open console" : "Create an account"}<Arrow /></Link><a href="#platform" className="cipher-text-link">See the platform <span aria-hidden="true">→</span></a></div>
 
         </div><DefenseNetwork /></div>
       </section>

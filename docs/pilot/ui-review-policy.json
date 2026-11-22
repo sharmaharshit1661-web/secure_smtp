@@ -1,0 +1,1 @@
+{"planning":"compact","context_depth":"dependency","verification_depth":"impact","delegation":"none","reason_codes":["request-error-states","control-state-consistency","browser-unavailable"],"decision":"Fix reproducible interaction defects, preserve design, verify logic and builds, explicitly leave rendered acceptance unverified."}

@@ -699,6 +699,7 @@ export default function SessionExplorer() {
                       style={{ flex: 1 }}
                       placeholder="e.g. Will disabling TLS 1.0 cause downtime? What is the threat if left unpatched?"
                       aria-label="Ask about this session"
+                      maxLength={4000}
                       value={copilotQuery}
                       onChange={(e) => setCopilotQuery(e.target.value)}
                       onKeyDown={(e) => {

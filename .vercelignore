@@ -1,0 +1,13 @@
+.env
+.env.*
+**/.env
+**/.env.*
+.clerk
+**/.clerk
+.venv
+tmp
+output
+.agents
+.codex
+frontend/dist
+frontend/dist-offline

@@ -27,7 +27,7 @@ def health_check() -> dict:
     mongo_status = get_mongo_auth_status()
     is_healthy = mongo_status.get("status") == "connected"
     settings = get_settings()
-    configured = bool(settings.clerk_issuer and settings.pilot_org_id and settings.clerk_authorized_parties)
+    configured = bool(settings.clerk_issuer and (getattr(settings, "public_registration", False) or settings.pilot_org_id) and settings.clerk_authorized_parties)
     if getattr(settings, "auth_provider", "clerk") == "keycloak":
         configured = bool(settings.offline_issuer and settings.offline_jwks_url and settings.pilot_org_id)
     if not is_healthy or not configured:

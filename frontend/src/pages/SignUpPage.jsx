@@ -1,5 +1,5 @@
 import { Link, Navigate } from 'react-router-dom';
-import { SignUp, OrganizationSwitcher } from '@clerk/clerk-react';
+import { SignUp } from '@clerk/react';
 import ThemeToggle from '../components/ThemeToggle';
 import Logo from '../components/Logo';
 import { useAuth } from '../context/AuthContext';
@@ -22,37 +22,13 @@ export default function SignUpPage() {
           <Logo size={32} />
           <span className="auth-brand-name">Secure SMTP</span>
         </div>
+        <h1 className="sr-only">Sign up for Secure SMTP</h1>
 
-        {!isClerkEnabled ? (
-          <div className="auth-card">
-            <h1 className="auth-title">Sign up for Secure SMTP</h1>
-            <p className="auth-subtitle">
-              Evaluation pilot environment. You can sign in directly using built-in credentials.
-            </p>
-            <Link
-              to="/sign-in"
-              className="btn btn-primary btn-block"
-              style={{ marginTop: '16px', display: 'block', textAlign: 'center' }}
-            >
-              Go to Sign In →
-            </Link>
-          </div>
-        ) : isAuthenticated ? (
-          <div className="auth-card">
-            <h1 className="auth-title">Select your organization</h1>
-            <p className="auth-subtitle">Use the pilot organization your administrator invited you to.</p>
-            <OrganizationSwitcher hidePersonal />
-            <Link
-              className="btn btn-primary"
-              to="/dashboard"
-              style={{ marginTop: '16px', display: 'block', textAlign: 'center' }}
-            >
-              Open dashboard
-            </Link>
-          </div>
-        ) : (
+        {isClerkEnabled ? (
           <SignUp routing="path" path="/sign-up" signInUrl="/sign-in" fallbackRedirectUrl="/dashboard" />
-        )}
+        ) : <section className="auth-card"><h1 className="auth-title">Registration is not configured</h1>
+          <p className="auth-subtitle">Your administrator must configure Clerk to enable account registration.</p></section>}
+        <p className="auth-subtitle">Already have an account? <Link to="/sign-in">Sign in</Link></p>
       </div>
     </div>
   );

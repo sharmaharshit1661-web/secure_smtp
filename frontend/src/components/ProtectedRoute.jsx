@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { OrganizationSwitcher, UserButton } from '@clerk/clerk-react';
+import { OrganizationSwitcher, UserButton } from '@clerk/react';
 import { useAuth } from '../context/AuthContext';
 import { PilotContext } from '../context/PilotContext';
 import { getIdentity } from '../api/client';
@@ -11,34 +11,29 @@ function PilotAccess({ orgId, children }) {
   const [verifiedIdentity, setVerifiedIdentity] = useState(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    if (!orgId) return;
     let active = true;
     getIdentity().then(identity => {
       if (!active) return;
       setVerifiedIdentity(identity);
-      setAccess((!isClerkEnabled || offline || identity.org_id === orgId) ? 'allowed' : 'membership');
+      setAccess('allowed');
     }).catch(error => {
       if (active) {
-        if (!isClerkEnabled) {
-          setVerifiedIdentity({ user_id: 'dev_analyst', org_id: orgId, role: 'admin', lab_enabled: true, retention_days: 30 });
-          setAccess('allowed');
-        } else {
-          setAccess(error.status === 403 ? 'membership' : 'unavailable');
-        }
+        setVerifiedIdentity(null);
+        setAccess(error.status === 403 ? 'membership' : 'unavailable');
       }
     });
     return () => { active = false; };
   }, [orgId, attempt, offline, isClerkEnabled]);
 
-  if (orgId && access === 'allowed') return <PilotContext.Provider value={verifiedIdentity}>{children}</PilotContext.Provider>;
-  if (orgId && access === 'checking') return <p className="ui-loading" role="status">Checking pilot access…</p>;
+  if (access === 'allowed') return <PilotContext.Provider value={verifiedIdentity}>{children}</PilotContext.Provider>;
+  if (access === 'checking') return <p className="ui-loading" role="status">Checking account access…</p>;
   const unavailable = access === 'unavailable';
   return <main className="auth-page"><section className="auth-card">
     {!isClerkEnabled || offline ? <button className="btn btn-outline" onClick={logout}>Sign out</button> : <UserButton />}
-    <h1 className="auth-title">{unavailable ? 'Access check unavailable' : offline ? 'Account access required' : 'Choose your pilot organization'}</h1>
-    <p className="auth-subtitle">{unavailable ? 'We could not verify your session. Try again or sign in with your pilot account.' : offline ? 'Ask your local administrator to assign the analyst or administrator role.' : 'Select the organization that invited you. If it is missing, open your invitation using the same email address.'}</p>
-    {isClerkEnabled && !offline && <OrganizationSwitcher hidePersonal />}
-    {orgId && <button className="btn btn-outline" onClick={() => { setAccess('checking'); setAttempt(n => n + 1); }}>Check access again</button>}
+    <h1 className="auth-title">{unavailable ? 'Access check unavailable' : 'Account access required'}</h1>
+    <p className="auth-subtitle">{unavailable ? 'We could not verify your session. Try again or sign in again.' : offline ? 'Ask your local administrator to assign the analyst or administrator role.' : 'Switch to your personal account to use your private workspace, or choose an organization you are authorized to access.'}</p>
+    {isClerkEnabled && !offline && <OrganizationSwitcher />}
+    {<button className="btn btn-outline" onClick={() => { setAccess('checking'); setAttempt(n => n + 1); }}>Check access again</button>}
   </section></main>;
 }
 
