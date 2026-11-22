@@ -47,12 +47,33 @@ class CustomMailDispatchRequest(BaseModel):
 async def websocket_live_endpoint(websocket: WebSocket) -> None:
     """Real-time event stream for incoming packet analyses, simulated sessions, and security alerts."""
     settings = get_settings()
-    origins = (
-        settings.cors_origins
-        if getattr(settings, "auth_provider", "clerk") == "keycloak"
-        else settings.clerk_authorized_parties
+    origin = websocket.headers.get("origin")
+    if not origin:
+        await websocket.close(code=4403)
+        return
+
+    allowed = set()
+    cors_orig = getattr(settings, "cors_origins", [])
+    if isinstance(cors_orig, list):
+        allowed.update(cors_orig)
+    elif cors_orig:
+        allowed.add(cors_orig)
+
+    clerk_parties = getattr(settings, "clerk_authorized_parties", [])
+    if isinstance(clerk_parties, list):
+        allowed.update(clerk_parties)
+    elif clerk_parties:
+        allowed.add(clerk_parties)
+
+    is_allowed = (
+        "*" in allowed
+        or origin in allowed
+        or origin.endswith(".vercel.app")
+        or "localhost" in origin
+        or "127.0.0.1" in origin
     )
-    if websocket.headers.get("origin") not in origins:
+
+    if not is_allowed:
         await websocket.close(code=4403)
         return
     manager = get_connection_manager()

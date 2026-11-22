@@ -174,7 +174,13 @@ app = FastAPI(
 settings = get_settings()
 
 DEFAULT_CORS_ORIGINS = settings.cors_origins
-allowed_origins = settings.cors_origins
+allowed_origins = (
+    list(settings.cors_origins)
+    if isinstance(settings.cors_origins, list)
+    else [settings.cors_origins]
+)
+if "https://secure-smtp.vercel.app" not in allowed_origins and "*" not in allowed_origins:
+    allowed_origins.append("https://secure-smtp.vercel.app")
 
 # If wildcard is explicitly used, credentials must be False per W3C CORS specification
 allow_credentials = False if "*" in allowed_origins else True
@@ -183,6 +189,7 @@ allowed_headers = settings.cors_headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=allow_credentials,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=allowed_headers,
