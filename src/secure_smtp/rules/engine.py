@@ -412,10 +412,14 @@ class RuleEngine:
     def _session_context(self, session: Session) -> dict:
         """Create a dict context for a session."""
         return {
-            "tls_mode": session.tls_mode.value if hasattr(session.tls_mode, "value") else str(session.tls_mode),
+            "tls_mode": session.tls_mode.value
+            if hasattr(session.tls_mode, "value")
+            else str(session.tls_mode),
             "starttls_advertised": session.starttls_advertised,
             "starttls_completed": session.starttls_completed,
-            "protocol": session.protocol.value if hasattr(session.protocol, "value") else str(session.protocol),
+            "protocol": session.protocol.value
+            if hasattr(session.protocol, "value")
+            else str(session.protocol),
         }
 
     def _handshake_context(self, handshake: TLSHandshake) -> dict:
@@ -423,7 +427,9 @@ class RuleEngine:
         return {
             "tls_version_negotiated": handshake.tls_version_negotiated,
             "cipher_suite_negotiated": handshake.cipher_suite_negotiated,
-            "key_exchange_type": handshake.key_exchange_type.value if hasattr(handshake.key_exchange_type, "value") else str(handshake.key_exchange_type),
+            "key_exchange_type": handshake.key_exchange_type.value
+            if hasattr(handshake.key_exchange_type, "value")
+            else str(handshake.key_exchange_type),
             "forward_secrecy": handshake.forward_secrecy,
             "visibility_limited": handshake.visibility_limited,
         }

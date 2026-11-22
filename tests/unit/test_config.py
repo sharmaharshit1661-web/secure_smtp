@@ -78,9 +78,7 @@ def test_mongo_uri_assembly_authenticated():
 
 def test_explicit_mongo_uri_override():
     """Verify explicit mongo_uri takes precedence over components."""
-    settings = Settings(
-        mongo_uri="mongodb+srv://cluster0.example.net/production?retryWrites=true"
-    )
+    settings = Settings(mongo_uri="mongodb+srv://cluster0.example.net/production?retryWrites=true")
     assert (
         settings.get_mongo_connection_uri()
         == "mongodb+srv://cluster0.example.net/production?retryWrites=true"

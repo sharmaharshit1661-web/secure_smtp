@@ -49,12 +49,14 @@ def build_report_data(hosts: list[dict], sessions: list[dict]) -> dict:
     }
 
     for host in hosts:
-        report["hosts"].append({
-            "id": host.get("id"),
-            "ip_or_hostname": host.get("ip_or_hostname"),
-            "session_count": host.get("session_count", 0),
-            "aggregate_risk_score": host.get("aggregate_risk_score", 0.0),
-        })
+        report["hosts"].append(
+            {
+                "id": host.get("id"),
+                "ip_or_hostname": host.get("ip_or_hostname"),
+                "session_count": host.get("session_count", 0),
+                "aggregate_risk_score": host.get("aggregate_risk_score", 0.0),
+            }
+        )
 
     for session in sessions:
         handshake = session.get("handshake")
@@ -122,12 +124,20 @@ def build_report_data(hosts: list[dict], sessions: list[dict]) -> dict:
                 "score": risk_score.get("score_0_100", 0.0) if risk_score else 0.0,
                 "tier": risk_score.get("tier", "low") if risk_score else "low",
                 "explanation": risk_score.get("feature_attribution", "{}") if risk_score else "{}",
-            } if risk_score else None,
+            }
+            if risk_score
+            else None,
             "anomaly_score": {
                 "score": anomaly_score.get("anomaly_score", 0.0) if anomaly_score else 0.0,
-                "is_anomalous": anomaly_score.get("is_anomalous", False) if anomaly_score else False,
-                "baseline": anomaly_score.get("baseline_reference", "global") if anomaly_score else "global",
-            } if anomaly_score else None,
+                "is_anomalous": anomaly_score.get("is_anomalous", False)
+                if anomaly_score
+                else False,
+                "baseline": anomaly_score.get("baseline_reference", "global")
+                if anomaly_score
+                else "global",
+            }
+            if anomaly_score
+            else None,
         }
         report["sessions"].append(session_data)
 
@@ -153,6 +163,7 @@ def generate_job_reports(job_id: str) -> None:
     sessions = list(sessions_col.find({"org_id": job["org_id"], "job_id": job_id}, {"_id": 0}))
     # Report host counts and scores describe this assessment, never the cumulative fleet.
     from secure_smtp.ai.risk_model import compute_host_rollup
+
     hosts = []
     for host_id in {s["host_id"] for s in sessions}:
         records = [s for s in sessions if s["host_id"] == host_id]
@@ -160,7 +171,9 @@ def generate_job_reports(job_id: str) -> None:
         if not host:
             raise ValueError("Assessment host is missing")
         host["session_count"] = len(records)
-        host["aggregate_risk_score"] = compute_host_rollup([RiskScore(**s["risk_score"]) for s in records if s.get("risk_score")])
+        host["aggregate_risk_score"] = compute_host_rollup(
+            [RiskScore(**s["risk_score"]) for s in records if s.get("risk_score")]
+        )
         hosts.append(host)
 
     report_data = build_report_data(hosts, sessions)
@@ -206,10 +219,12 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
         raise ValueError("Assessment ownership is missing")
     org_id = job["org_id"]
     from uuid import uuid4
+
     run_id = str(uuid4())
     lease = {"job_id": job_id, "run_id": run_id, "status": "running"}
-    claimed = jobs_col.update_one({"job_id": job_id, "status": "queued"},
-                                  {"$set": {"status": "running", "run_id": run_id}})
+    claimed = jobs_col.update_one(
+        {"job_id": job_id, "status": "queued"}, {"$set": {"status": "running", "run_id": run_id}}
+    )
     if not claimed.modified_count:
         raise RuntimeError("Assessment is no longer queued")
 
@@ -245,7 +260,9 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                 continue
 
             # Find or create Host in MongoDB
-            host_doc = hosts_col.find_one({"ip_or_hostname": reassembled.server_ip, "org_id": org_id})
+            host_doc = hosts_col.find_one(
+                {"ip_or_hostname": reassembled.server_ip, "org_id": org_id}
+            )
             if not host_doc:
                 host_id = get_next_sequence("host_id")
                 host_data = {
@@ -290,9 +307,7 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                 )
 
                 # Compute fingerprints
-                fingerprints = compute_fingerprints(
-                    parsed_hs.client_hello, parsed_hs.server_hello
-                )
+                fingerprints = compute_fingerprints(parsed_hs.client_hello, parsed_hs.server_hello)
 
                 # Create TLSHandshake model
                 handshake_model = TLSHandshake(
@@ -306,12 +321,16 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                     ja3s=fingerprints.ja3s,
                     ja4=fingerprints.ja4,
                     ja4s=fingerprints.ja4s,
-                    extensions=json.dumps({
-                        str(k): v.hex() for k, v in (
-                            parsed_hs.client_hello.extensions.items()
-                            if parsed_hs.client_hello else {}
-                        )
-                    }),
+                    extensions=json.dumps(
+                        {
+                            str(k): v.hex()
+                            for k, v in (
+                                parsed_hs.client_hello.extensions.items()
+                                if parsed_hs.client_hello
+                                else {}
+                            )
+                        }
+                    ),
                     visibility_limited=parsed_hs.visibility_limited,
                 )
 
@@ -335,21 +354,15 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
                         certificates_models.append(cert_model)
 
             # Stage 4: Rule engine
-            findings = rule_engine.evaluate_session(
-                session, handshake_model, certificates_models
-            )
+            findings = rule_engine.evaluate_session(session, handshake_model, certificates_models)
             for finding in findings:
                 finding.session_id = session.id
 
             # Stage 5: Feature vector + risk scoring
-            fv = build_feature_vector(
-                session, handshake_model, certificates_models, findings
-            )
+            fv = build_feature_vector(session, handshake_model, certificates_models, findings)
             risk_score = risk_model.score_session(fv, findings)
             risk_score.session_id = session.id
-            risk_score = enrich_risk_score_with_explanation(
-                risk_score, findings, fv
-            )
+            risk_score = enrich_risk_score_with_explanation(risk_score, findings, fv)
 
             # Assemble complete session document for MongoDB
             session.handshake = handshake_model
@@ -358,7 +371,14 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
             session.risk_score = risk_score
 
             session_dict = session.model_dump()
-            session_dict.update(published=False, run_id=run_id, org_id=org_id, owner_id=job["owner_id"], job_id=job_id, source_kind=job.get("source_kind", "manual_capture"))
+            session_dict.update(
+                published=False,
+                run_id=run_id,
+                org_id=org_id,
+                owner_id=job["owner_id"],
+                job_id=job_id,
+                source_kind=job.get("source_kind", "manual_capture"),
+            )
             sessions_col.insert_one(session_dict)
 
             all_feature_vectors.append(fv)
@@ -386,18 +406,24 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
         # Mark job as done
         completed = jobs_col.update_one(
             lease,
-            {"$set": {
-                "status": "done",
-                "completed_at": datetime.now(UTC),
-            }},
+            {
+                "$set": {
+                    "status": "done",
+                    "completed_at": datetime.now(UTC),
+                }
+            },
         )
 
         if not completed.modified_count:
             raise RuntimeError("Assessment lease expired before publication")
-        sessions_col.update_many({"job_id": job_id, "org_id": org_id}, {"$set": {"published": True}})
+        sessions_col.update_many(
+            {"job_id": job_id, "org_id": org_id}, {"$set": {"published": True}}
+        )
         from secure_smtp.monitoring.service import refresh_hosts
+
         refresh_hosts(org_id)
         from secure_smtp.operations.integrations import run_integrations
+
         run_integrations(org_id, job_id)
         logger.info("Job %s: Analysis complete", job_id)
 
@@ -405,9 +431,11 @@ def run_pcap_analysis(job_id: str, pcap_path: str) -> None:
         logger.error("Job %s failed (%s)", job_id, type(e).__name__)
         jobs_col.update_one(
             lease,
-            {"$set": {
-                "status": "failed",
-                "error_message": "Capture analysis failed. The file may be corrupt, unsupported, or exceed processing limits.",
-                "completed_at": datetime.now(UTC),
-            }},
+            {
+                "$set": {
+                    "status": "failed",
+                    "error_message": "Capture analysis failed. The file may be corrupt, unsupported, or exceed processing limits.",
+                    "completed_at": datetime.now(UTC),
+                }
+            },
         )

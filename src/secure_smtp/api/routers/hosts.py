@@ -23,7 +23,11 @@ router = APIRouter(prefix="/api/hosts", tags=["Hosts"], dependencies=[Depends(ve
 async def list_hosts(principal: Principal = Depends(verify_api_key)) -> list[dict]:
     """List all evaluated mail hosts sorted by aggregate risk score descending."""
     hosts_col = get_hosts_col()
-    hosts = list(hosts_col.find(visible_scope(principal), {"_id": 0}).sort("aggregate_risk_score", DESCENDING))
+    hosts = list(
+        hosts_col.find(visible_scope(principal), {"_id": 0}).sort(
+            "aggregate_risk_score", DESCENDING
+        )
+    )
     return [
         {
             "host_id": h["id"],
@@ -56,17 +60,19 @@ async def get_host_detail(host_id: int, principal: Principal = Depends(verify_ap
         tls = s.get("tls_mode", "none")
         tls_val = tls.value if hasattr(tls, "value") else str(tls)
 
-        session_list.append({
-            "session_id": s["id"],
-            "src_ip": s["src_ip"],
-            "dst_ip": s["dst_ip"],
-            "src_port": s["src_port"],
-            "dst_port": s["dst_port"],
-            "protocol": proto_val,
-            "tls_mode": tls_val,
-            "risk_score": risk.get("score_0_100", 0.0) if risk else None,
-            "risk_tier": risk.get("tier", "low") if risk else None,
-        })
+        session_list.append(
+            {
+                "session_id": s["id"],
+                "src_ip": s["src_ip"],
+                "dst_ip": s["dst_ip"],
+                "src_port": s["src_port"],
+                "dst_port": s["dst_port"],
+                "protocol": proto_val,
+                "tls_mode": tls_val,
+                "risk_score": risk.get("score_0_100", 0.0) if risk else None,
+                "risk_tier": risk.get("tier", "low") if risk else None,
+            }
+        )
 
     return {
         "host_id": host["id"],

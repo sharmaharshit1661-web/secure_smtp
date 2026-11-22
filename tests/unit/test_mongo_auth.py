@@ -41,7 +41,10 @@ def test_build_mongo_uri_with_credentials():
         auth_db="admin",
         auth_mechanism="SCRAM-SHA-256",
     )
-    assert uri == "mongodb://my_user:my_password@127.0.0.1:27017/secure_smtp?authSource=admin&authMechanism=SCRAM-SHA-256"
+    assert (
+        uri
+        == "mongodb://my_user:my_password@127.0.0.1:27017/secure_smtp?authSource=admin&authMechanism=SCRAM-SHA-256"
+    )
 
 
 def test_build_mongo_uri_percent_encoding():
@@ -79,6 +82,7 @@ def test_get_masked_mongo_uri_unauthenticated():
 def test_get_mongo_auth_status_structure(monkeypatch):
     """Verify get_mongo_auth_status returns expected keys and types."""
     from secure_smtp.db import mongodb
+
     fake_client = MagicMock()
     fake_client.admin.command.return_value = {"ok": 1.0}
     monkeypatch.setattr(mongodb, "get_mongo_client", lambda: fake_client)
@@ -94,13 +98,25 @@ def test_get_mongo_auth_status_structure(monkeypatch):
 
 def test_health_endpoint_does_not_expose_database_or_identity_details(monkeypatch):
     from secure_smtp.api.routers import system
-    monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {
-        "status": "connected", "uri_masked": "mongodb://internal", "authenticated_user": "secret-user",
-    })
-    monkeypatch.setattr(system, "get_settings", lambda: SimpleNamespace(
-        clerk_issuer="https://identity.example.test", pilot_org_id="org_pilot",
-        clerk_authorized_parties=["https://pilot.example.test"],
-    ))
+
+    monkeypatch.setattr(
+        system,
+        "get_mongo_auth_status",
+        lambda: {
+            "status": "connected",
+            "uri_masked": "mongodb://internal",
+            "authenticated_user": "secret-user",
+        },
+    )
+    monkeypatch.setattr(
+        system,
+        "get_settings",
+        lambda: SimpleNamespace(
+            clerk_issuer="https://identity.example.test",
+            pilot_org_id="org_pilot",
+            clerk_authorized_parties=["https://pilot.example.test"],
+        ),
+    )
     response = TestClient(app).get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy", "service": "secure-smtp"}
@@ -108,6 +124,7 @@ def test_health_endpoint_does_not_expose_database_or_identity_details(monkeypatc
 
 def test_health_endpoint_signals_database_failure(monkeypatch):
     from secure_smtp.api.routers import system
+
     monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {"status": "disconnected"})
     response = TestClient(app).get("/api/health")
     assert response.status_code == 503
@@ -116,8 +133,15 @@ def test_health_endpoint_signals_database_failure(monkeypatch):
 
 def test_health_endpoint_signals_unconfigured_identity(monkeypatch):
     from secure_smtp.api.routers import system
+
     monkeypatch.setattr(system, "get_mongo_auth_status", lambda: {"status": "connected"})
-    monkeypatch.setattr(system, "get_settings", lambda: SimpleNamespace(
-        clerk_issuer="", pilot_org_id="", clerk_authorized_parties=[],
-    ))
+    monkeypatch.setattr(
+        system,
+        "get_settings",
+        lambda: SimpleNamespace(
+            clerk_issuer="",
+            pilot_org_id="",
+            clerk_authorized_parties=[],
+        ),
+    )
     assert TestClient(app).get("/api/health").status_code == 503

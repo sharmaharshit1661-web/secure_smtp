@@ -43,10 +43,12 @@ def ensure_test_certificates() -> tuple[Path, Path, Path, Path]:
     if not valid_cert_path.exists() or not valid_key_path.exists():
         # Generate valid RSA 2048 cert
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "mail.securesmtp.local"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Secure SMTP Test Lab"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, "mail.securesmtp.local"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Secure SMTP Test Lab"),
+            ]
+        )
         now = datetime.now(UTC).replace(tzinfo=None)
         cert = (
             x509.CertificateBuilder()
@@ -56,25 +58,31 @@ def ensure_test_certificates() -> tuple[Path, Path, Path, Path]:
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - timedelta(days=30))
             .not_valid_after(now + timedelta(days=365))
-            .add_extension(x509.SubjectAlternativeName([x509.DNSName("mail.securesmtp.local")]), critical=False)
+            .add_extension(
+                x509.SubjectAlternativeName([x509.DNSName("mail.securesmtp.local")]), critical=False
+            )
             .sign(key, hashes.SHA256())
         )
         with open(valid_key_path, "wb") as f:
-            f.write(key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption(),
-            ))
+            f.write(
+                key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+            )
         with open(valid_cert_path, "wb") as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM))
 
     if not expired_cert_path.exists() or not expired_key_path.exists():
         # Generate expired RSA 1024 cert
         key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
-        subject = issuer = x509.Name([
-            x509.NameAttribute(NameOID.COMMON_NAME, "expired.securesmtp.local"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Insecure Legacy Lab"),
-        ])
+        subject = issuer = x509.Name(
+            [
+                x509.NameAttribute(NameOID.COMMON_NAME, "expired.securesmtp.local"),
+                x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Insecure Legacy Lab"),
+            ]
+        )
         now = datetime.now(UTC).replace(tzinfo=None)
         cert = (
             x509.CertificateBuilder()
@@ -87,11 +95,13 @@ def ensure_test_certificates() -> tuple[Path, Path, Path, Path]:
             .sign(key, hashes.SHA256())
         )
         with open(expired_key_path, "wb") as f:
-            f.write(key.private_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PrivateFormat.TraditionalOpenSSL,
-                encryption_algorithm=serialization.NoEncryption(),
-            ))
+            f.write(
+                key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.TraditionalOpenSSL,
+                    encryption_algorithm=serialization.NoEncryption(),
+                )
+            )
         with open(expired_cert_path, "wb") as f:
             f.write(cert.public_bytes(serialization.Encoding.PEM))
 
@@ -106,7 +116,13 @@ def _parse_cert_to_model(cert_path: Path) -> Any:
     cert = x509.load_pem_x509_certificate(pem_bytes)
 
     pub_key = cert.public_key()
-    algo = "RSA" if isinstance(pub_key, rsa.RSAPublicKey) else "ECDSA" if isinstance(pub_key, ec.EllipticCurvePublicKey) else "Unknown"
+    algo = (
+        "RSA"
+        if isinstance(pub_key, rsa.RSAPublicKey)
+        else "ECDSA"
+        if isinstance(pub_key, ec.EllipticCurvePublicKey)
+        else "Unknown"
+    )
     bits = getattr(pub_key, "key_size", 2048)
 
     sig_name = "sha256"
@@ -134,7 +150,11 @@ def _parse_cert_to_model(cert_path: Path) -> Any:
         na = na.replace(tzinfo=None)
 
     is_valid_cert = cert_path.name == "valid_cert.pem"
-    issuer_str = "CN=Let's Encrypt Authority X3,O=Let's Encrypt,C=US" if is_valid_cert else cert.issuer.rfc4514_string()
+    issuer_str = (
+        "CN=Let's Encrypt Authority X3,O=Let's Encrypt,C=US"
+        if is_valid_cert
+        else cert.issuer.rfc4514_string()
+    )
 
     return Certificate(
         chain_position=0,
@@ -168,8 +188,12 @@ def _socket_handshake(session_id, version, cipher):
     """A socket exposes version/cipher, not ClientHello fingerprints or key exchange."""
     from secure_smtp.db.models import TLSHandshake
 
-    return TLSHandshake(session_id=session_id, tls_version_negotiated=version,
-                        cipher_suite_negotiated=cipher, visibility_limited=True)
+    return TLSHandshake(
+        session_id=session_id,
+        tls_version_negotiated=version,
+        cipher_suite_negotiated=cipher,
+        visibility_limited=True,
+    )
 
 
 class LiveMailLab:
@@ -214,6 +238,7 @@ class LiveMailLab:
 
         try:
             from secure_smtp.config import get_settings
+
             org_id = get_settings().pilot_org_id
             if not org_id:
                 raise ValueError("Pilot organization required for lab records")
@@ -226,7 +251,9 @@ class LiveMailLab:
             sessions_col = get_sessions_col()
 
             # Find or create Host in MongoDB
-            host_doc = hosts_col.find_one({"ip_or_hostname": normalized_server_ip, "org_id": org_id})
+            host_doc = hosts_col.find_one(
+                {"ip_or_hostname": normalized_server_ip, "org_id": org_id}
+            )
             if not host_doc:
                 host_id = get_next_sequence("host_id")
                 host_data = {
@@ -286,16 +313,32 @@ class LiveMailLab:
             session.certificates = certificates_models
             session.findings = findings
             session.risk_score = risk_score
-            sessions_col.insert_one({**session.model_dump(), "org_id": org_id, "owner_id": "controlled_lab", "source_kind": "controlled_lab"})
+            sessions_col.insert_one(
+                {
+                    **session.model_dump(),
+                    "org_id": org_id,
+                    "owner_id": "controlled_lab",
+                    "source_kind": "controlled_lab",
+                }
+            )
 
             # Update Host rollups
             try:
                 host_sessions = list(sessions_col.find({"host_id": host_id}))
-                scores = [s.get("risk_score", {}).get("score_0_100", 0.0) for s in host_sessions if s.get("risk_score")]
+                scores = [
+                    s.get("risk_score", {}).get("score_0_100", 0.0)
+                    for s in host_sessions
+                    if s.get("risk_score")
+                ]
                 avg_score = sum(scores) / len(scores) if scores else 0.0
                 hosts_col.update_one(
                     {"id": host_id},
-                    {"$set": {"session_count": len(host_sessions), "aggregate_risk_score": round(avg_score, 1)}}
+                    {
+                        "$set": {
+                            "session_count": len(host_sessions),
+                            "aggregate_risk_score": round(avg_score, 1),
+                        }
+                    },
                 )
             except Exception as host_err:
                 logger.debug("Failed updating host rollup: %s", host_err)
@@ -303,6 +346,7 @@ class LiveMailLab:
             # Security Alerts
             try:
                 from secure_smtp.alerts.engine import dispatch_alert
+
                 dispatch_alert(
                     session_id=session.id,
                     client_ip=client_ip,
@@ -316,7 +360,9 @@ class LiveMailLab:
                 logger.debug("Alert dispatch skipped: %s", alert_err)
 
             # WebSocket Broadcast
-            tier_val = risk_score.tier.value if hasattr(risk_score.tier, "value") else str(risk_score.tier)
+            tier_val = (
+                risk_score.tier.value if hasattr(risk_score.tier, "value") else str(risk_score.tier)
+            )
             payload = {
                 "event": "NEW_SESSION",
                 "org_id": org_id,
@@ -339,7 +385,15 @@ class LiveMailLab:
 
             manager = get_connection_manager()
             await manager.broadcast(payload)
-            logger.info("Recorded live socket session #%s from %s:%s to %s:%s (Risk: %s)", session_id, client_ip, client_port, normalized_server_ip, server_port, risk_score.score_0_100)
+            logger.info(
+                "Recorded live socket session #%s from %s:%s to %s:%s (Risk: %s)",
+                session_id,
+                client_ip,
+                client_port,
+                normalized_server_ip,
+                server_port,
+                risk_score.score_0_100,
+            )
 
         except Exception as err:
             logger.exception("Error processing live socket session: %s", err)
@@ -430,7 +484,9 @@ class LiveMailLab:
                     break
                 cmd = line.decode(errors="ignore").strip().upper()
                 if cmd.startswith("EHLO") or cmd.startswith("HELO"):
-                    writer.write(b"250-test-modern.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n")
+                    writer.write(
+                        b"250-test-modern.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n"
+                    )
                     await writer.drain()
                 elif cmd == "STARTTLS":
                     writer.write(b"220 2.0.0 Ready to start TLS\r\n")
@@ -439,7 +495,9 @@ class LiveMailLab:
                         transport = writer.transport
                         protocol = transport.get_protocol()
                         loop = asyncio.get_running_loop()
-                        new_transport = await loop.start_tls(transport, protocol, ssl_ctx, server_side=True)
+                        new_transport = await loop.start_tls(
+                            transport, protocol, ssl_ctx, server_side=True
+                        )
                         if new_transport is None:
                             raise ConnectionError("TLS transport closed during negotiation")
                         writer._transport = new_transport
@@ -492,10 +550,14 @@ class LiveMailLab:
                 cert_path=valid_cert if tls_completed else None,
                 tls_version=negotiated_version,
                 cipher=negotiated_cipher,
-                scenario_label="Controlled TLS connection" if tls_completed else "STARTTLS not completed",
+                scenario_label="Controlled TLS connection"
+                if tls_completed
+                else "STARTTLS not completed",
             )
 
-    async def _handle_vulnerable_tls(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _handle_vulnerable_tls(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ):
         """Port 2527: Vulnerable TLS with expired RSA-1024 certificate."""
         peername = writer.get_extra_info("peername") or ("127.0.0.1", 0)
         sockname = writer.get_extra_info("sockname") or ("0.0.0.0", 2527)
@@ -527,7 +589,9 @@ class LiveMailLab:
                     break
                 cmd = line.decode(errors="ignore").strip().upper()
                 if cmd.startswith("EHLO") or cmd.startswith("HELO"):
-                    writer.write(b"250-test-vulnerable.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n")
+                    writer.write(
+                        b"250-test-vulnerable.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n"
+                    )
                     await writer.drain()
                 elif cmd == "STARTTLS":
                     writer.write(b"220 2.0.0 Ready to start TLS\r\n")
@@ -536,7 +600,9 @@ class LiveMailLab:
                         transport = writer.transport
                         protocol = transport.get_protocol()
                         loop = asyncio.get_running_loop()
-                        new_transport = await loop.start_tls(transport, protocol, ssl_ctx, server_side=True)
+                        new_transport = await loop.start_tls(
+                            transport, protocol, ssl_ctx, server_side=True
+                        )
                         if new_transport is None:
                             raise ConnectionError("TLS transport closed during negotiation")
                         writer._transport = new_transport
@@ -588,10 +654,14 @@ class LiveMailLab:
                 cert_path=expired_cert if tls_completed else None,
                 tls_version=negotiated_version,
                 cipher=negotiated_cipher,
-                scenario_label="Controlled legacy TLS connection" if tls_completed else "STARTTLS not completed",
+                scenario_label="Controlled legacy TLS connection"
+                if tls_completed
+                else "STARTTLS not completed",
             )
 
-    async def _handle_stripping_attack(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+    async def _handle_stripping_attack(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ):
         """Port 2528: Simulates STARTTLS stripping downgrade attack."""
         peername = writer.get_extra_info("peername") or ("127.0.0.1", 0)
         sockname = writer.get_extra_info("sockname") or ("0.0.0.0", 2528)
@@ -609,11 +679,15 @@ class LiveMailLab:
                 cmd = line.decode(errors="ignore").strip().upper()
                 if cmd.startswith("EHLO") or cmd.startswith("HELO"):
                     # Advertises STARTTLS
-                    writer.write(b"250-test-downgrade.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n")
+                    writer.write(
+                        b"250-test-downgrade.mail.local\r\n250-STARTTLS\r\n250-8BITMIME\r\n250 HELP\r\n"
+                    )
                     await writer.drain()
                 elif cmd == "STARTTLS":
                     # Deliberately drops/rejects STARTTLS command simulating active MITM stripping tampering
-                    writer.write(b"500 5.5.1 Command unrecognized or stripped by intermediate proxy\r\n")
+                    writer.write(
+                        b"500 5.5.1 Command unrecognized or stripped by intermediate proxy\r\n"
+                    )
                     await writer.drain()
                 elif cmd.startswith("MAIL FROM:") or cmd.startswith("RCPT TO:"):
                     writer.write(b"250 2.1.0 Ok (in plaintext)\r\n")
@@ -665,7 +739,10 @@ class LiveMailLab:
         self.servers.append(s4)
 
         self.is_running = True
-        logger.info("Live Mail Lab running on %s ports 2525 (Plaintext), 2526 (Modern TLS), 2527 (Vulnerable), 2528 (Stripping)", self.host)
+        logger.info(
+            "Live Mail Lab running on %s ports 2525 (Plaintext), 2526 (Modern TLS), 2527 (Vulnerable), 2528 (Stripping)",
+            self.host,
+        )
         return {"plaintext": 2525, "tls_modern": 2526, "vulnerable": 2527, "stripping": 2528}
 
     async def stop(self):

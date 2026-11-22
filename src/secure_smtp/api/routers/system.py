@@ -27,13 +27,21 @@ def health_check() -> dict:
     mongo_status = get_mongo_auth_status()
     is_healthy = mongo_status.get("status") == "connected"
     settings = get_settings()
-    configured = bool(settings.clerk_issuer and (getattr(settings, "public_registration", False) or settings.pilot_org_id) and settings.clerk_authorized_parties)
-    if getattr(settings, "auth_provider", "clerk") == "keycloak":
-        configured = bool(settings.offline_issuer and settings.offline_jwks_url and settings.pilot_org_id)
+    if getattr(settings, "auth_provider", "clerk") in ("mongodb", "native"):
+        configured = True
+    elif getattr(settings, "auth_provider", "clerk") == "keycloak":
+        configured = bool(
+            settings.offline_issuer and settings.offline_jwks_url and settings.pilot_org_id
+        )
+    else:
+        configured = bool(
+            settings.clerk_issuer
+            and (getattr(settings, "public_registration", False) or settings.pilot_org_id)
+            and settings.clerk_authorized_parties
+        )
     if not is_healthy or not configured:
-        raise HTTPException(503, 'Service not ready')
+        raise HTTPException(503, "Service not ready")
     return {"status": "healthy", "service": "secure-smtp"}
-
 
 
 @router.get("/demo_client.py", include_in_schema=False, dependencies=[Depends(require_lab_admin)])
@@ -51,7 +59,9 @@ def download_demo_client() -> FileResponse:
     )
 
 
-@router.get("/attacker_proxy.py", include_in_schema=False, dependencies=[Depends(require_lab_admin)])
+@router.get(
+    "/attacker_proxy.py", include_in_schema=False, dependencies=[Depends(require_lab_admin)]
+)
 def download_attacker_proxy() -> FileResponse:
     """Allow 2nd laptop (interceptor node) to download the MitM proxy script directly."""
     proxy_script_path = Path(__file__).resolve().parents[4] / "attacker_proxy.py"

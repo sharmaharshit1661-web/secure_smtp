@@ -38,12 +38,8 @@ SMTP_STARTTLS_ADV = re.compile(rb"250[\s-]STARTTLS", re.MULTILINE | re.IGNORECAS
 
 # IMAP: "* OK ... IMAP ..." or "* OK [CAPABILITY ...]"
 IMAP_BANNER_RE = re.compile(rb"^\* OK\s", re.MULTILINE)
-IMAP_STARTTLS_CMD = re.compile(
-    rb"^\S+\s+STARTTLS\r?\n", re.MULTILINE | re.IGNORECASE
-)
-IMAP_STARTTLS_OK = re.compile(
-    rb"^\S+\s+OK\s", re.MULTILINE | re.IGNORECASE
-)
+IMAP_STARTTLS_CMD = re.compile(rb"^\S+\s+STARTTLS\r?\n", re.MULTILINE | re.IGNORECASE)
+IMAP_STARTTLS_OK = re.compile(rb"^\S+\s+OK\s", re.MULTILINE | re.IGNORECASE)
 IMAP_STARTTLS_ADV = re.compile(rb"STARTTLS", re.IGNORECASE)
 
 # POP3: "+OK ... POP3 ..." or "+OK Hello"
@@ -78,9 +74,7 @@ def _find_tls_start(data: bytes, search_from: int = 0) -> int:
     return -1
 
 
-def _detect_smtp(
-    c2s: bytes, s2c: bytes, server_port: int
-) -> ProtocolIdentification | None:
+def _detect_smtp(c2s: bytes, s2c: bytes, server_port: int) -> ProtocolIdentification | None:
     """Try to identify SMTP protocol from stream data."""
     # Check for SMTP banner in server→client data
     banner_match = SMTP_BANNER_RE.search(s2c[:2048])
@@ -108,7 +102,7 @@ def _detect_smtp(
 
     # Extract banner text
     banner_end = s2c.find(b"\r\n", banner_match.start())
-    banner_text = s2c[banner_match.start(): banner_end].decode("ascii", errors="replace")
+    banner_text = s2c[banner_match.start() : banner_end].decode("ascii", errors="replace")
 
     # Check for STARTTLS
     starttls_advertised = bool(SMTP_STARTTLS_ADV.search(s2c[:4096]))
@@ -153,9 +147,7 @@ def _detect_smtp(
     )
 
 
-def _detect_imap(
-    c2s: bytes, s2c: bytes, server_port: int
-) -> ProtocolIdentification | None:
+def _detect_imap(c2s: bytes, s2c: bytes, server_port: int) -> ProtocolIdentification | None:
     """Try to identify IMAP protocol from stream data."""
     banner_match = IMAP_BANNER_RE.search(s2c[:2048])
     port_hint = server_port in IMAP_PORTS | IMAPS_PORTS
@@ -180,7 +172,7 @@ def _detect_imap(
         return None
 
     banner_end = s2c.find(b"\r\n", banner_match.start())
-    banner_text = s2c[banner_match.start(): banner_end].decode("ascii", errors="replace")
+    banner_text = s2c[banner_match.start() : banner_end].decode("ascii", errors="replace")
 
     starttls_advertised = bool(IMAP_STARTTLS_ADV.search(s2c[:4096]))
     starttls_cmd = IMAP_STARTTLS_CMD.search(c2s)
@@ -217,9 +209,7 @@ def _detect_imap(
     )
 
 
-def _detect_pop3(
-    c2s: bytes, s2c: bytes, server_port: int
-) -> ProtocolIdentification | None:
+def _detect_pop3(c2s: bytes, s2c: bytes, server_port: int) -> ProtocolIdentification | None:
     """Try to identify POP3 protocol from stream data."""
     banner_match = POP3_BANNER_RE.search(s2c[:2048])
     port_hint = server_port in POP3_PORTS | POP3S_PORTS
@@ -250,7 +240,7 @@ def _detect_pop3(
         return None
 
     banner_end = s2c.find(b"\r\n", banner_match.start())
-    banner_text = s2c[banner_match.start(): banner_end].decode("ascii", errors="replace")
+    banner_text = s2c[banner_match.start() : banner_end].decode("ascii", errors="replace")
 
     starttls_advertised = bool(POP3_STLS_ADV.search(s2c[:4096]))
     stls_cmd = POP3_STLS_CMD.search(c2s)

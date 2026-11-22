@@ -23,7 +23,9 @@ from secure_smtp.api.auth import Principal, verify_api_key, visible_scope
 
 def _get_sessions_col():
     from secure_smtp.api import main
+
     return main.get_sessions_col()
+
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +46,11 @@ class GlobalAskCopilotRequest(BaseModel):
 
 
 @router.post("/api/sessions/{session_id}/copilot/remediate")
-def copilot_remediate(session_id: int, req: RemediateRequest = RemediateRequest(), principal: Principal = Depends(verify_api_key)) -> dict:
+def copilot_remediate(
+    session_id: int,
+    req: RemediateRequest = RemediateRequest(),
+    principal: Principal = Depends(verify_api_key),
+) -> dict:
     """Generate production-ready mail server configuration to fix detected weaknesses."""
     sessions_col = _get_sessions_col()
     session = sessions_col.find_one(visible_scope(principal, {"id": session_id}))
@@ -68,7 +74,9 @@ def copilot_briefing(session_id: int, principal: Principal = Depends(verify_api_
 
 
 @router.post("/api/sessions/{session_id}/copilot/ask")
-def copilot_ask(session_id: int, req: AskCopilotRequest, principal: Principal = Depends(verify_api_key)) -> dict:
+def copilot_ask(
+    session_id: int, req: AskCopilotRequest, principal: Principal = Depends(verify_api_key)
+) -> dict:
     """Ask the AI Copilot any question about this session's security posture."""
     sessions_col = _get_sessions_col()
     session = sessions_col.find_one(visible_scope(principal, {"id": session_id}))
@@ -79,7 +87,9 @@ def copilot_ask(session_id: int, req: AskCopilotRequest, principal: Principal = 
 
 
 @router.post("/api/ai/copilot/ask")
-def global_copilot_ask(req: GlobalAskCopilotRequest, principal: Principal = Depends(verify_api_key)) -> dict:
+def global_copilot_ask(
+    req: GlobalAskCopilotRequest, principal: Principal = Depends(verify_api_key)
+) -> dict:
     """Ask the AI Copilot any security or hardening question across the fleet."""
     sessions_col = _get_sessions_col()
     session = None
@@ -88,7 +98,9 @@ def global_copilot_ask(req: GlobalAskCopilotRequest, principal: Principal = Depe
     if req.session_id and not session:
         raise HTTPException(404, "Session not found")
     if not session:
-        session = sessions_col.find_one(visible_scope(principal), sort=[("risk_score.score_0_100", -1)]) or sessions_col.find_one(visible_scope(principal), sort=[("id", -1)])
+        session = sessions_col.find_one(
+            visible_scope(principal), sort=[("risk_score.score_0_100", -1)]
+        ) or sessions_col.find_one(visible_scope(principal), sort=[("id", -1)])
     if not session:
         raise HTTPException(404, "No observed session is available for this organization")
     findings = session.get("findings", [])
@@ -100,8 +112,14 @@ def global_ai_overview(principal: Principal = Depends(verify_api_key)) -> dict:
     """Get high-level AI security analytics including Isolation Forest anomaly baselines and PQC metrics."""
     sessions_col = _get_sessions_col()
     total_sessions = sessions_col.count_documents(visible_scope(principal))
-    anomalous_count = sessions_col.count_documents(visible_scope(principal, {"anomaly_score.is_anomalous": True}))
-    engine_name = "External AI configured; individual responses identify their source" if (os.environ.get("GEMINI_API_KEY") or os.environ.get("SECURE_SMTP_GEMINI_KEY")) else "Rule-based templates"
+    anomalous_count = sessions_col.count_documents(
+        visible_scope(principal, {"anomaly_score.is_anomalous": True})
+    )
+    engine_name = (
+        "External AI configured; individual responses identify their source"
+        if (os.environ.get("GEMINI_API_KEY") or os.environ.get("SECURE_SMTP_GEMINI_KEY"))
+        else "Rule-based templates"
+    )
 
     return {
         "engine": engine_name,
@@ -109,7 +127,9 @@ def global_ai_overview(principal: Principal = Depends(verify_api_key)) -> dict:
             "status": "batch observations only" if total_sessions else "unavailable",
             "model": "IsolationForest(contamination=0.08, n_estimators=100)",
             "anomalous_sessions": anomalous_count,
-            "conformity_rate": f"{max(0, 100 - round((anomalous_count / total_sessions) * 100, 1))}%" if total_sessions else None,
+            "conformity_rate": f"{max(0, 100 - round((anomalous_count / total_sessions) * 100, 1))}%"
+            if total_sessions
+            else None,
         },
         "explainable_ai": {
             "method": "Session-specific attribution; no fleet-wide feature weights computed",

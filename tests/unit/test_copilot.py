@@ -95,7 +95,11 @@ def test_generate_incident_briefing(mock_session, mock_findings):
 
 def test_ask_copilot_questions(mock_session, mock_findings):
     # Test zero-downtime question
-    q1 = ask_copilot(mock_session, mock_findings, "Will disabling TLS 1.0 cause downtime or break legacy clients?")
+    q1 = ask_copilot(
+        mock_session,
+        mock_findings,
+        "Will disabling TLS 1.0 cause downtime or break legacy clients?",
+    )
     assert "Zero-Downtime Migration" in q1["answer"]
     assert q1["generation_method"] == "rule_based_template"
     assert "not external AI" in q1["engine"]
@@ -136,12 +140,17 @@ def test_copilot_api_endpoints(monkeypatch, mock_session, mock_findings):
     monkeypatch.setattr(main, "get_sessions_col", lambda: FakeCollection())
 
     assert client.post("/api/sessions/8/copilot/ask", json={"query": "Explain"}).status_code == 401
-    monkeypatch.setitem(app.dependency_overrides, verify_api_key,
-                        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800))
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        verify_api_key,
+        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800),
+    )
     headers = {}
 
     # Test remediate endpoint
-    r1 = client.post("/api/sessions/8/copilot/remediate", json={"server_type": "postfix"}, headers=headers)
+    r1 = client.post(
+        "/api/sessions/8/copilot/remediate", json={"server_type": "postfix"}, headers=headers
+    )
     assert r1.status_code == 200
     assert "main.cf" in r1.json()["filepath"]
 
@@ -151,7 +160,9 @@ def test_copilot_api_endpoints(monkeypatch, mock_session, mock_findings):
     assert "Briefing" in r2.json()["title"]
 
     # Test ask endpoint
-    r3 = client.post("/api/sessions/8/copilot/ask", json={"query": "Explain the threat"}, headers=headers)
+    r3 = client.post(
+        "/api/sessions/8/copilot/ask", json={"query": "Explain the threat"}, headers=headers
+    )
     assert r3.status_code == 200
     assert "answer" in r3.json()
 
@@ -169,8 +180,11 @@ def test_empty_fleet_does_not_invent_ai_scores_or_session_context(monkeypatch):
             return None
 
     monkeypatch.setattr(main, "get_sessions_col", lambda: EmptyCollection())
-    monkeypatch.setitem(app.dependency_overrides, verify_api_key,
-                        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800))
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        verify_api_key,
+        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800),
+    )
     client = TestClient(app)
     response = client.get("/api/ai/overview")
     assert response.status_code == 200
@@ -185,6 +199,7 @@ def test_empty_fleet_does_not_invent_ai_scores_or_session_context(monkeypatch):
 
 def test_inaccessible_explicit_session_does_not_fall_back_to_another_session(monkeypatch):
     from secure_smtp.api import main
+
     calls = []
 
     class ScopedCollection:
@@ -194,8 +209,13 @@ def test_inaccessible_explicit_session_does_not_fall_back_to_another_session(mon
             return None
 
     monkeypatch.setattr(main, "get_sessions_col", lambda: ScopedCollection())
-    monkeypatch.setitem(app.dependency_overrides, verify_api_key,
-                        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800))
-    response = TestClient(app).post("/api/ai/copilot/ask", json={"query": "Explain", "session_id": 123})
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        verify_api_key,
+        lambda: Principal("user_analyst", "org_pilot", "member", 4102444800),
+    )
+    response = TestClient(app).post(
+        "/api/ai/copilot/ask", json={"query": "Explain", "session_id": 123}
+    )
     assert response.status_code == 404
     assert len(calls) == 1

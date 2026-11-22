@@ -50,9 +50,7 @@ def compute_base_risk_score(findings: list[Finding]) -> tuple[float, RiskTier]:
     if not findings:
         return 0.0, RiskTier.LOW
 
-    raw_sum = sum(
-        SEVERITY_WEIGHTS.get(f.severity, 0) for f in findings
-    )
+    raw_sum = sum(SEVERITY_WEIGHTS.get(f.severity, 0) for f in findings)
 
     # Normalize to 0–100 using a sigmoid-like curve
     # This ensures the score doesn't just linearly stack
@@ -159,12 +157,16 @@ class RiskModel:
 
         for f in findings:
             weight = SEVERITY_WEIGHTS.get(f.severity, 0)
-            attribution["finding_contributions"].append({
-                "rule_id": f.rule_id,
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "weight": weight,
-                "message": f.message,
-            })
+            attribution["finding_contributions"].append(
+                {
+                    "rule_id": f.rule_id,
+                    "severity": f.severity.value
+                    if hasattr(f.severity, "value")
+                    else str(f.severity),
+                    "weight": weight,
+                    "message": f.message,
+                }
+            )
 
         return attribution
 

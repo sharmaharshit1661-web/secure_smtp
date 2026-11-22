@@ -30,30 +30,85 @@ TLS_VERSIONS = {
 
 # Cipher suites that use ECDHE key exchange
 ECDHE_CIPHERS = {
-    0xC009, 0xC00A, 0xC013, 0xC014, 0xC023, 0xC024, 0xC027, 0xC028,
-    0xC02B, 0xC02C, 0xC02F, 0xC030, 0xCCA8, 0xCCA9, 0xCCAA,
-    0x1301, 0x1302, 0x1303,  # TLS 1.3 suites (always ECDHE/DHE)
+    0xC009,
+    0xC00A,
+    0xC013,
+    0xC014,
+    0xC023,
+    0xC024,
+    0xC027,
+    0xC028,
+    0xC02B,
+    0xC02C,
+    0xC02F,
+    0xC030,
+    0xCCA8,
+    0xCCA9,
+    0xCCAA,
+    0x1301,
+    0x1302,
+    0x1303,  # TLS 1.3 suites (always ECDHE/DHE)
 }
 
 # Cipher suites that use DHE key exchange
 DHE_CIPHERS = {
-    0x0033, 0x0039, 0x0067, 0x006B, 0x009E, 0x009F, 0x00A2, 0x00A3,
+    0x0033,
+    0x0039,
+    0x0067,
+    0x006B,
+    0x009E,
+    0x009F,
+    0x00A2,
+    0x00A3,
     0xCCAD,
 }
 
 # Known weak/broken cipher suites
 WEAK_CIPHER_IDS = {
     # NULL ciphers
-    0x0000, 0x0001, 0x0002, 0x002C, 0x002D, 0x002E,
+    0x0000,
+    0x0001,
+    0x0002,
+    0x002C,
+    0x002D,
+    0x002E,
     # Export ciphers
-    0x0003, 0x0006, 0x0008, 0x000B, 0x000E, 0x0011, 0x0014, 0x0017,
-    0x0019, 0x0026, 0x0027, 0x0028, 0x0029, 0x002A, 0x002B,
+    0x0003,
+    0x0006,
+    0x0008,
+    0x000B,
+    0x000E,
+    0x0011,
+    0x0014,
+    0x0017,
+    0x0019,
+    0x0026,
+    0x0027,
+    0x0028,
+    0x0029,
+    0x002A,
+    0x002B,
     # RC4 ciphers
-    0x0004, 0x0005, 0x0018, 0x0024, 0xC002, 0xC007, 0xC00C, 0xC011,
+    0x0004,
+    0x0005,
+    0x0018,
+    0x0024,
+    0xC002,
+    0xC007,
+    0xC00C,
+    0xC011,
     # DES ciphers
-    0x0009, 0x000C, 0x000F, 0x0012, 0x0015,
+    0x0009,
+    0x000C,
+    0x000F,
+    0x0012,
+    0x0015,
     # 3DES ciphers
-    0x000A, 0x000D, 0x0010, 0x0013, 0x0016,
+    0x000A,
+    0x000D,
+    0x0010,
+    0x0013,
+    0x0016,
 }
 
 # Named cipher suites for display
@@ -165,12 +220,12 @@ def _parse_extensions(data: bytes, offset: int, length: int) -> tuple[dict[int, 
     pos = offset
 
     while pos + 4 <= end:
-        ext_type = struct.unpack("!H", data[pos:pos + 2])[0]
-        ext_len = struct.unpack("!H", data[pos + 2:pos + 4])[0]
+        ext_type = struct.unpack("!H", data[pos : pos + 2])[0]
+        ext_len = struct.unpack("!H", data[pos + 2 : pos + 4])[0]
         pos += 4
         if pos + ext_len > end:
             break
-        extensions[ext_type] = data[pos:pos + ext_len]
+        extensions[ext_type] = data[pos : pos + ext_len]
         ext_types.append(ext_type)
         pos += ext_len
 
@@ -186,9 +241,9 @@ def _extract_sni(ext_data: bytes) -> str:
         pos = 2
         if pos < len(ext_data) and ext_data[pos] == 0:  # host_name type
             pos += 1
-            name_len = struct.unpack("!H", ext_data[pos:pos + 2])[0]
+            name_len = struct.unpack("!H", ext_data[pos : pos + 2])[0]
             pos += 2
-            return ext_data[pos:pos + name_len].decode("ascii", errors="replace")
+            return ext_data[pos : pos + name_len].decode("ascii", errors="replace")
     except (struct.error, IndexError):
         pass
     return ""
@@ -257,7 +312,7 @@ def parse_client_hello(data: bytes) -> ParsedClientHello | None:
         pos += 2
 
         # Random (32 bytes)
-        result.random = data[pos:pos + 32]
+        result.random = data[pos : pos + 32]
         pos += 32
 
         # Session ID
@@ -265,11 +320,11 @@ def parse_client_hello(data: bytes) -> ParsedClientHello | None:
         pos += 1 + session_id_len
 
         # Cipher suites
-        cipher_suites_len = struct.unpack("!H", data[pos:pos + 2])[0]
+        cipher_suites_len = struct.unpack("!H", data[pos : pos + 2])[0]
         pos += 2
         num_ciphers = cipher_suites_len // 2
         for _ in range(num_ciphers):
-            cs = struct.unpack("!H", data[pos:pos + 2])[0]
+            cs = struct.unpack("!H", data[pos : pos + 2])[0]
             result.cipher_suites.append(cs)
             result.cipher_suite_names.append(_get_cipher_name(cs))
             pos += 2
@@ -283,11 +338,9 @@ def parse_client_hello(data: bytes) -> ParsedClientHello | None:
 
         # Extensions (if present)
         if pos + 2 <= len(data):
-            extensions_len = struct.unpack("!H", data[pos:pos + 2])[0]
+            extensions_len = struct.unpack("!H", data[pos : pos + 2])[0]
             pos += 2
-            result.extensions, result.extension_types = _parse_extensions(
-                data, pos, extensions_len
-            )
+            result.extensions, result.extension_types = _parse_extensions(data, pos, extensions_len)
 
             # Extract SNI (extension type 0)
             if 0 in result.extensions:
@@ -295,9 +348,7 @@ def parse_client_hello(data: bytes) -> ParsedClientHello | None:
 
             # Extract supported versions (extension type 0x002B = 43)
             if 43 in result.extensions:
-                result.supported_versions = _extract_supported_versions(
-                    result.extensions[43]
-                )
+                result.supported_versions = _extract_supported_versions(result.extensions[43])
             else:
                 result.supported_versions = [result.client_version]
 
@@ -349,7 +400,7 @@ def parse_server_hello(data: bytes) -> ParsedServerHello | None:
         pos += 2
 
         # Random
-        result.random = data[pos:pos + 32]
+        result.random = data[pos : pos + 32]
         pos += 32
 
         # Session ID
@@ -357,7 +408,7 @@ def parse_server_hello(data: bytes) -> ParsedServerHello | None:
         pos += 1 + session_id_len
 
         # Cipher suite (single value)
-        result.cipher_suite = struct.unpack("!H", data[pos:pos + 2])[0]
+        result.cipher_suite = struct.unpack("!H", data[pos : pos + 2])[0]
         result.cipher_suite_name = _get_cipher_name(result.cipher_suite)
         pos += 2
 
@@ -367,11 +418,9 @@ def parse_server_hello(data: bytes) -> ParsedServerHello | None:
 
         # Extensions
         if pos + 2 <= 5 + record_length and pos + 2 <= len(data):
-            extensions_len = struct.unpack("!H", data[pos:pos + 2])[0]
+            extensions_len = struct.unpack("!H", data[pos : pos + 2])[0]
             pos += 2
-            result.extensions, result.extension_types = _parse_extensions(
-                data, pos, extensions_len
-            )
+            result.extensions, result.extension_types = _parse_extensions(data, pos, extensions_len)
 
             # Check for TLS 1.3 via supported_versions extension
             if 43 in result.extensions:
@@ -408,14 +457,14 @@ def _extract_certificates_from_handshake(data: bytes, offset: int = 0) -> list[b
             continue
 
         try:
-            record_len = struct.unpack("!H", data[pos + 3:pos + 5])[0]
+            record_len = struct.unpack("!H", data[pos + 3 : pos + 5])[0]
             record_start = pos + 5
 
             # Check if this record contains a Certificate message
             hs_pos = record_start
             while hs_pos + 4 <= record_start + record_len and hs_pos < len(data):
                 hs_type = data[hs_pos]
-                hs_len = struct.unpack("!I", b"\x00" + data[hs_pos + 1:hs_pos + 4])[0]
+                hs_len = struct.unpack("!I", b"\x00" + data[hs_pos + 1 : hs_pos + 4])[0]
                 hs_data_start = hs_pos + 4
 
                 if hs_type == 11:  # Certificate message
@@ -423,19 +472,17 @@ def _extract_certificates_from_handshake(data: bytes, offset: int = 0) -> list[b
                     cert_pos = hs_data_start
                     if cert_pos + 3 > len(data):
                         break
-                    certs_total_len = struct.unpack(
-                        "!I", b"\x00" + data[cert_pos:cert_pos + 3]
-                    )[0]
+                    certs_total_len = struct.unpack("!I", b"\x00" + data[cert_pos : cert_pos + 3])[
+                        0
+                    ]
                     cert_pos += 3
 
                     cert_end = cert_pos + certs_total_len
                     while cert_pos + 3 <= cert_end and cert_pos + 3 <= len(data):
-                        cert_len = struct.unpack(
-                            "!I", b"\x00" + data[cert_pos:cert_pos + 3]
-                        )[0]
+                        cert_len = struct.unpack("!I", b"\x00" + data[cert_pos : cert_pos + 3])[0]
                         cert_pos += 3
                         if cert_pos + cert_len <= len(data):
-                            certificates.append(data[cert_pos:cert_pos + cert_len])
+                            certificates.append(data[cert_pos : cert_pos + cert_len])
                         cert_pos += cert_len
 
                 hs_pos = hs_data_start + hs_len
@@ -477,10 +524,9 @@ def parse_handshake(
 
     # Derive combined handshake properties
     if result.client_hello:
-        result.tls_version_offered = (
-            result.client_hello.supported_versions
-            or [result.client_hello.client_version]
-        )
+        result.tls_version_offered = result.client_hello.supported_versions or [
+            result.client_hello.client_version
+        ]
         result.extension_count = len(result.client_hello.extension_types)
 
     if result.server_hello:

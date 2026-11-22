@@ -75,10 +75,7 @@ def _fallback_attribution(feature_vector: FeatureVector) -> dict[str, float]:
         return {name: 0.0 for name in FEATURE_NAMES}
 
     normalized = values / total
-    return {
-        name: round(float(val), 4)
-        for name, val in zip(FEATURE_NAMES, normalized)
-    }
+    return {name: round(float(val), 4) for name, val in zip(FEATURE_NAMES, normalized)}
 
 
 def compute_rule_based_explanation(
@@ -109,21 +106,23 @@ def compute_rule_based_explanation(
     for finding in findings:
         weight = SEVERITY_WEIGHTS.get(finding.severity, 0)
         total_weight += weight
-        explanation["contributions"].append({
-            "rule_id": finding.rule_id,
-            "severity": finding.severity.value if hasattr(finding.severity, "value") else str(finding.severity),
-            "weight": weight,
-            "percentage": 0.0,  # Will be filled in below
-            "message": finding.message,
-            "recommendation": finding.recommendation_text,
-        })
+        explanation["contributions"].append(
+            {
+                "rule_id": finding.rule_id,
+                "severity": finding.severity.value
+                if hasattr(finding.severity, "value")
+                else str(finding.severity),
+                "weight": weight,
+                "percentage": 0.0,  # Will be filled in below
+                "message": finding.message,
+                "recommendation": finding.recommendation_text,
+            }
+        )
 
     # Calculate percentages
     if total_weight > 0:
         for contrib in explanation["contributions"]:
-            contrib["percentage"] = round(
-                (contrib["weight"] / total_weight) * 100, 1
-            )
+            contrib["percentage"] = round((contrib["weight"] / total_weight) * 100, 1)
 
     # Feature summary — key facts about the session
     fv_dict = feature_vector.to_dict()

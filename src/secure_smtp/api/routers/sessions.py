@@ -17,16 +17,22 @@ from secure_smtp.db.mongodb import get_sessions_col
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/sessions", tags=["Sessions"], dependencies=[Depends(verify_api_key)])
+router = APIRouter(
+    prefix="/api/sessions", tags=["Sessions"], dependencies=[Depends(verify_api_key)]
+)
 
 
 @router.get("")
-async def list_sessions(limit: int = 100, principal: Principal = Depends(verify_api_key)) -> list[dict]:
+async def list_sessions(
+    limit: int = 100, principal: Principal = Depends(verify_api_key)
+) -> list[dict]:
     """List recent sessions across all hosts for fleet-wide telemetry."""
     if not 1 <= limit <= 500:
         raise HTTPException(422, "Limit must be between 1 and 500")
     sessions_col = get_sessions_col()
-    sessions = list(sessions_col.find(visible_scope(principal), {"_id": 0}).sort("id", DESCENDING).limit(limit))
+    sessions = list(
+        sessions_col.find(visible_scope(principal), {"_id": 0}).sort("id", DESCENDING).limit(limit)
+    )
     return [
         {
             "id": s["id"],
@@ -39,8 +45,12 @@ async def list_sessions(limit: int = 100, principal: Principal = Depends(verify_
             "dst_ip": s.get("dst_ip"),
             "src_port": s.get("src_port"),
             "dst_port": s.get("dst_port"),
-            "protocol": s.get("protocol").value if hasattr(s.get("protocol"), "value") else str(s.get("protocol", "smtp")),
-            "tls_mode": s.get("tls_mode").value if hasattr(s.get("tls_mode"), "value") else str(s.get("tls_mode", "none")),
+            "protocol": s.get("protocol").value
+            if hasattr(s.get("protocol"), "value")
+            else str(s.get("protocol", "smtp")),
+            "tls_mode": s.get("tls_mode").value
+            if hasattr(s.get("tls_mode"), "value")
+            else str(s.get("tls_mode", "none")),
             "risk_score": (s.get("risk_score") or {}).get("score_0_100"),
             "risk_tier": (s.get("risk_score") or {}).get("tier", "unknown"),
             "findings": [
@@ -49,7 +59,8 @@ async def list_sessions(limit: int = 100, principal: Principal = Depends(verify_
                     "severity": f.get("severity"),
                     "message": f.get("message"),
                 }
-                for f in s.get("findings", []) if isinstance(f, dict)
+                for f in s.get("findings", [])
+                if isinstance(f, dict)
             ],
             "tls_version": (s.get("handshake") or {}).get("tls_version_negotiated"),
             "cipher_suite": (s.get("handshake") or {}).get("cipher_suite_negotiated"),
@@ -60,7 +71,9 @@ async def list_sessions(limit: int = 100, principal: Principal = Depends(verify_
 
 
 @router.get("/{session_id}")
-async def get_session_detail(session_id: int, principal: Principal = Depends(verify_api_key)) -> dict:
+async def get_session_detail(
+    session_id: int, principal: Principal = Depends(verify_api_key)
+) -> dict:
     """Get full session forensic detail including certificates, findings, and risk score."""
     sessions_col = get_sessions_col()
     session = sessions_col.find_one(visible_scope(principal, {"id": session_id}), {"_id": 0})
@@ -161,7 +174,9 @@ async def get_session_detail(session_id: int, principal: Principal = Depends(ver
 
 
 @router.get("/{session_id}/explain")
-async def get_session_explanation(session_id: int, principal: Principal = Depends(verify_api_key)) -> dict:
+async def get_session_explanation(
+    session_id: int, principal: Principal = Depends(verify_api_key)
+) -> dict:
     """Get SHAP feature attribution for a session's risk score."""
     sessions_col = get_sessions_col()
     session = sessions_col.find_one(visible_scope(principal, {"id": session_id}), {"_id": 0})

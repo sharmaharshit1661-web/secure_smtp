@@ -61,7 +61,9 @@ def test_build_payload_standard_and_slack():
     assert payload_std["security"]["risk_tier"] == "CRITICAL"
 
     # Slack format
-    engine_slack = AlertEngine(webhook_url="https://hooks.slack.com/services/T00/B00/X00", enabled=True)
+    engine_slack = AlertEngine(
+        webhook_url="https://hooks.slack.com/services/T00/B00/X00", enabled=True
+    )
     payload_slack = engine_slack.build_payload(
         session_id=42,
         client_ip="10.0.0.1",

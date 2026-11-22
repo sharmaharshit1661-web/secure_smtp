@@ -77,21 +77,29 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
     )
 
     from html import escape
+
     def safe(value):
         if isinstance(value, dict):
             return {key: safe(item) for key, item in value.items()}
         if isinstance(value, list):
             return [safe(item) for item in value]
         return escape(value) if isinstance(value, str) else value
+
     data = safe(data)
     story = []
 
     # Title & Metadata
     story.append(Paragraph("🛡️ Secure SMTP — Security Assessment Report", title_style))
     gen_time = data.get("generated_at", "N/A")
-    story.append(Paragraph(f"Generated at: {gen_time} | Passive Cryptographic Posture Intelligence", subtitle_style))
+    story.append(
+        Paragraph(
+            f"Generated at: {gen_time} | Passive Cryptographic Posture Intelligence", subtitle_style
+        )
+    )
     story.append(Spacer(1, 8))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=12))
+    story.append(
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=12)
+    )
 
     # Executive Summary Table
     story.append(Paragraph("Executive Summary", heading2_style))
@@ -117,12 +125,16 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
         ],
     ]
     summary_table = Table(summary_data, colWidths=[120, 130, 120, 130])
-    summary_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-        ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#e2e8f0")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-        ("PADDING", (0, 0), (-1, -1), 5),
-    ]))
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#e2e8f0")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("PADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
     story.append(summary_table)
     story.append(Spacer(1, 12))
 
@@ -130,28 +142,44 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
     story.append(Paragraph("Host Overview", heading2_style))
     hosts = data.get("hosts", [])
     if hosts:
-        host_table_data = [[
-            Paragraph("Host / IP", bold_style),
-            Paragraph("Sessions", bold_style),
-            Paragraph("Aggregate Risk Score", bold_style),
-            Paragraph("Status", bold_style),
-        ]]
+        host_table_data = [
+            [
+                Paragraph("Host / IP", bold_style),
+                Paragraph("Sessions", bold_style),
+                Paragraph("Aggregate Risk Score", bold_style),
+                Paragraph("Status", bold_style),
+            ]
+        ]
         for h in hosts:
             score = h.get("aggregate_risk_score", 0.0)
-            status_text = "CRITICAL" if score >= 75 else "HIGH" if score >= 50 else "MEDIUM" if score >= 25 else "LOW"
-            host_table_data.append([
-                Paragraph(str(h.get("ip_or_hostname", "")), body_style),
-                Paragraph(str(h.get("session_count", 0)), body_style),
-                Paragraph(f"{score:.1f}", body_style),
-                Paragraph(status_text, bold_style),
-            ])
+            status_text = (
+                "CRITICAL"
+                if score >= 75
+                else "HIGH"
+                if score >= 50
+                else "MEDIUM"
+                if score >= 25
+                else "LOW"
+            )
+            host_table_data.append(
+                [
+                    Paragraph(str(h.get("ip_or_hostname", "")), body_style),
+                    Paragraph(str(h.get("session_count", 0)), body_style),
+                    Paragraph(f"{score:.1f}", body_style),
+                    Paragraph(status_text, bold_style),
+                ]
+            )
         host_table = Table(host_table_data, colWidths=[180, 70, 140, 110])
-        host_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-            ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-            ("PADDING", (0, 0), (-1, -1), 4),
-        ]))
+        host_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                    ("BOX", (0, 0), (-1, -1), 1, colors.HexColor("#cbd5e1")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                    ("PADDING", (0, 0), (-1, -1), 4),
+                ]
+            )
+        )
         story.append(host_table)
     else:
         story.append(Paragraph("No host records found.", body_style))
@@ -182,12 +210,21 @@ def _generate_pdf_reportlab(output_path: Path, data: dict[str, Any]) -> None:
         story.append(Spacer(1, 4))
 
     if not has_findings:
-        story.append(Paragraph("No security weaknesses detected across all analyzed sessions.", body_style))
+        story.append(
+            Paragraph("No security weaknesses detected across all analyzed sessions.", body_style)
+        )
 
     # Footer
     story.append(Spacer(1, 15))
-    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6))
-    story.append(Paragraph("Secure SMTP Automated Posture Assessment — Project belongs to @sharmaharshit1661-web", subtitle_style))
+    story.append(
+        HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#cbd5e1"), spaceAfter=6)
+    )
+    story.append(
+        Paragraph(
+            "Secure SMTP Automated Posture Assessment — Project belongs to @sharmaharshit1661-web",
+            subtitle_style,
+        )
+    )
 
     doc.build(story)
     logger.info("Generated PDF report using ReportLab: %s", output_path)

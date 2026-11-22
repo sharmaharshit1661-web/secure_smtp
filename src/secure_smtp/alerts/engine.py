@@ -41,8 +41,12 @@ class AlertEngine:
         self.webhook_url = webhook_url or settings.alert_webhook_url
         self.secret = secret or settings.alert_webhook_secret
         self.min_severity = (min_severity or settings.alert_min_severity).upper()
-        self.risk_threshold = settings.alert_risk_threshold if risk_threshold is None else risk_threshold
-        self.enabled = enabled if enabled is not None else (settings.alerts_enabled and bool(self.webhook_url))
+        self.risk_threshold = (
+            settings.alert_risk_threshold if risk_threshold is None else risk_threshold
+        )
+        self.enabled = (
+            enabled if enabled is not None else (settings.alerts_enabled and bool(self.webhook_url))
+        )
 
     def should_alert(self, findings: list[dict[str, Any]], risk_score: float) -> bool:
         """Determine whether the findings or risk score meet the alert threshold."""
@@ -90,7 +94,11 @@ class AlertEngine:
             },
             "security": {
                 "risk_score": risk_score,
-                "risk_tier": "CRITICAL" if risk_score >= 80 else "HIGH" if risk_score >= 60 else "MEDIUM",
+                "risk_tier": "CRITICAL"
+                if risk_score >= 80
+                else "HIGH"
+                if risk_score >= 60
+                else "MEDIUM",
                 "finding_count": len(findings),
                 "critical_findings": critical_findings,
             },
@@ -105,11 +113,23 @@ class AlertEngine:
                 f"• *Risk Score*: `{risk_score:.1f}/100` ({payload['security']['risk_tier']})\n"
                 f"• *Violations*: {', '.join(critical_findings) if critical_findings else 'High Risk Attributed'}"
             )
-            return {"text": slack_text, "attachments": [{"color": "#e11d48", "fields": [
-                {"title": "Protocol", "value": protocol.upper(), "short": True},
-                {"title": "Risk Score", "value": f"{risk_score:.1f}", "short": True},
-                {"title": "Violations", "value": f"{len(findings)} rules fired", "short": False},
-            ]}]}
+            return {
+                "text": slack_text,
+                "attachments": [
+                    {
+                        "color": "#e11d48",
+                        "fields": [
+                            {"title": "Protocol", "value": protocol.upper(), "short": True},
+                            {"title": "Risk Score", "value": f"{risk_score:.1f}", "short": True},
+                            {
+                                "title": "Violations",
+                                "value": f"{len(findings)} rules fired",
+                                "short": False,
+                            },
+                        ],
+                    }
+                ],
+            }
 
         return payload
 
@@ -117,9 +137,10 @@ class AlertEngine:
         """Compute HMAC-SHA256 signature using the shared secret."""
         if not self.secret:
             return ""
-        return "sha256=" + hmac.new(
-            self.secret.encode("utf-8"), body_bytes, hashlib.sha256
-        ).hexdigest()
+        return (
+            "sha256="
+            + hmac.new(self.secret.encode("utf-8"), body_bytes, hashlib.sha256).hexdigest()
+        )
 
     def send(
         self,

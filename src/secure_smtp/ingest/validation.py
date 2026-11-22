@@ -82,13 +82,19 @@ def validate_capture(path: str | Path, max_packets: int = 100000) -> None:
                     captured = min(original, interfaces[0] or original)
                     header = 12
                 else:
-                    interface = struct.unpack_from(endian + ("H" if kind == 2 else "I"), data, pos + 8)[0]
+                    interface = struct.unpack_from(
+                        endian + ("H" if kind == 2 else "I"), data, pos + 8
+                    )[0]
                     captured, original = struct.unpack_from(endian + "II", data, pos + 20)
                     header = 28
                 if interface >= len(interfaces):
                     raise ValueError("Packet references a missing interface")
                 padded = (captured + 3) & ~3
-                if captured > original or (interfaces[interface] and captured > interfaces[interface]) or header + padded + 4 > size:
+                if (
+                    captured > original
+                    or (interfaces[interface] and captured > interfaces[interface])
+                    or header + padded + 4 > size
+                ):
                     raise ValueError("Invalid PCAPNG packet length")
                 if kind == 3 and header + padded + 4 != size:
                     raise ValueError("Invalid PCAPNG simple packet padding")

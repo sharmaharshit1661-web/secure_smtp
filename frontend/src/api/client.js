@@ -176,3 +176,40 @@ export const revokeAgent = id => request(`/api/agents/${id}/revoke`, { method: '
 export const deleteAssessment = id => request(`/api/assessments/${id}`, { method: 'DELETE' });
 export const retryIntegrations = id => request(`/api/assessments/${id}/retry-integrations`, { method: 'POST' });
 export const trackRemediation = (session_id, rule_id) => request('/api/remediations', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({session_id,rule_id}) });
+
+export async function loginUser(email, password) {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Sign in failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function registerUser({ name, email, password, role = 'admin' }) {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, password, role }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Registration failed (${res.status})`);
+  }
+  return res.json();
+}
+
+export async function demoLogin() {
+  const res = await fetch(`${API_BASE}/api/auth/demo`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `Demo access failed (${res.status})`);
+  }
+  return res.json();
+}

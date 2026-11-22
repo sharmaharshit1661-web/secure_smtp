@@ -165,6 +165,7 @@ def read_pcap(filepath: str | Path) -> list[PacketStream]:
 
     from secure_smtp.config import get_settings
     from secure_smtp.ingest.validation import validate_capture
+
     limits = get_settings()
     validate_capture(filepath, limits.max_capture_packets)
     try:

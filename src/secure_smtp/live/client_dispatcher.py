@@ -37,11 +37,13 @@ def run_smtp_client_session(
     transcript: list[dict[str, str]] = []
 
     def log(direction: str, text: str):
-        transcript.append({
-            "timestamp": _get_timestamp(),
-            "direction": direction,
-            "text": text,
-        })
+        transcript.append(
+            {
+                "timestamp": _get_timestamp(),
+                "direction": direction,
+                "text": text,
+            }
+        )
 
     log("info", f"Initiating TCP connection to {host}:{port} ({scenario.upper()})")
 
@@ -57,7 +59,11 @@ def run_smtp_client_session(
             "scenario": scenario,
         }
 
-    use_tls = port in (2526, 2527, 2528) or scenario in ("tls_modern", "tls_vulnerable", "stripping")
+    use_tls = port in (2526, 2527, 2528) or scenario in (
+        "tls_modern",
+        "tls_vulnerable",
+        "stripping",
+    )
     expect_stripping = port == 2528 or scenario == "stripping"
     cipher_info = "None (Plaintext)"
 
@@ -79,7 +85,10 @@ def run_smtp_client_session(
             tls_resp = send_cmd("STARTTLS")
 
             if expect_stripping:
-                log("alert", "⚠️ Active Tampering Detected: Server stripped STARTTLS capability or refused command!")
+                log(
+                    "alert",
+                    "⚠️ Active Tampering Detected: Server stripped STARTTLS capability or refused command!",
+                )
                 log("alert", "Downgrading to cleartext SMTP transmission (Insecure Fallback)")
             elif "220" in tls_resp:
                 log("crypto", "Negotiating TLS cryptographic tunnel...")
@@ -121,7 +130,7 @@ def run_smtp_client_session(
             f"{body}\r\n"
             f".\r\n"
         )
-        log("send", f"DATA Payload ({len(body)} bytes, Subject: \"{subject}\")")
+        log("send", f'DATA Payload ({len(body)} bytes, Subject: "{subject}")')
         s.sendall(email_data.encode("utf-8"))
         data_resp = s.recv(4096).decode("utf-8", errors="ignore").strip()
         log("recv", data_resp)

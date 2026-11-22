@@ -24,7 +24,14 @@ def process_job(job_id: str, path: str):
     try:
         # Hard deadline: a parser cannot hold the web process indefinitely.
         subprocess.run(
-            [sys.executable, "-m", "secure_smtp.api.analysis_worker", job_id, path, str(os.getpid())],
+            [
+                sys.executable,
+                "-m",
+                "secure_smtp.api.analysis_worker",
+                job_id,
+                path,
+                str(os.getpid()),
+            ],
             check=True,
             timeout=settings.analysis_timeout_seconds,
         )

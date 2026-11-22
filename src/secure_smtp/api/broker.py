@@ -41,6 +41,7 @@ class ConnectionManager:
     async def broadcast(self, message: dict[str, Any]) -> None:
         """Broadcast a JSON message to all active clients, pruning dead connections."""
         import time
+
         for connection in list(self.active_connections):
             principal = self.identities.get(connection)
             if not principal or message.get("org_id") != principal.org_id:

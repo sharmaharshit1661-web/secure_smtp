@@ -246,13 +246,22 @@ def init_db_indexes() -> None:
         jobs = get_jobs_col()
         jobs.create_index([("job_id", ASCENDING)], unique=True)
         db = get_database()
-        db.agents.create_index('agent_id', unique=True)
-        db.sessions.create_index([('agent_id', ASCENDING), ('event_id', ASCENDING)], unique=True, partialFilterExpression={'event_id': {'$type': 'string'}})
-        db.event_tombstones.create_index([('agent_id', ASCENDING), ('event_id', ASCENDING)], unique=True)
-        db.event_tombstones.create_index('expires_at', expireAfterSeconds=0)
-        db.audit.create_index([('org_id', ASCENDING), ('created_at', DESCENDING)])
-        db.alert_deliveries.create_index('dedupe_key', unique=True)
-        db.remediations.create_index([('org_id', ASCENDING), ('session_id', ASCENDING), ('rule_id', ASCENDING)], unique=True)
+        db.users.create_index("email", unique=True)
+        db.agents.create_index("agent_id", unique=True)
+        db.sessions.create_index(
+            [("agent_id", ASCENDING), ("event_id", ASCENDING)],
+            unique=True,
+            partialFilterExpression={"event_id": {"$type": "string"}},
+        )
+        db.event_tombstones.create_index(
+            [("agent_id", ASCENDING), ("event_id", ASCENDING)], unique=True
+        )
+        db.event_tombstones.create_index("expires_at", expireAfterSeconds=0)
+        db.audit.create_index([("org_id", ASCENDING), ("created_at", DESCENDING)])
+        db.alert_deliveries.create_index("dedupe_key", unique=True)
+        db.remediations.create_index(
+            [("org_id", ASCENDING), ("session_id", ASCENDING), ("rule_id", ASCENDING)], unique=True
+        )
         logger.info("MongoDB indexes successfully created on database: %s", DATABASE_NAME)
     except Exception:
         logger.error("Failed to initialize MongoDB indexes")

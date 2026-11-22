@@ -37,6 +37,7 @@ def _get_pcap_path(scenario_name: str) -> Path:
 
 # ── Helpers: run pipeline stages on a single PCAP ──
 
+
 def _analyze_pcap(pcap_path: Path):
     """Run Stages 1-3 on a PCAP and return pipeline results."""
     from secure_smtp.ingest.pcap_reader import read_pcap
@@ -67,9 +68,7 @@ def _analyze_pcap(pcap_path: Path):
         )
         if parsed_hs.raw_certificates:
             parsed_certs = parse_certificate_chain(parsed_hs.raw_certificates)
-        fingerprints = compute_fingerprints(
-            parsed_hs.client_hello, parsed_hs.server_hello
-        )
+        fingerprints = compute_fingerprints(parsed_hs.client_hello, parsed_hs.server_hello)
 
     return {
         "stream": stream,
@@ -148,21 +147,32 @@ def _run_rules(proto_id, parsed_hs, parsed_certs, reassembled):
 class TestPcapReader:
     """Test PCAP reading and stream extraction."""
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-        "smtp_expired_cert", "smtp_self_signed_weak_key",
-        "smtp_starttls_stripped", "smtp_plaintext",
-        "imap_tls12_good", "pop3_sha1_cert", "smtp_no_forward_secrecy",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "smtp_starttls_stripped",
+            "smtp_plaintext",
+            "imap_tls12_good",
+            "pop3_sha1_cert",
+            "smtp_no_forward_secrecy",
+        ],
+    )
     def test_pcap_reads_without_error(self, scenario):
         """Every test PCAP should load without error."""
         from secure_smtp.ingest.pcap_reader import read_pcap
+
         streams = read_pcap(str(_get_pcap_path(scenario)))
         assert len(streams) >= 1
 
     def test_pcap_file_not_found(self):
         """Missing PCAP should raise FileNotFoundError."""
         from secure_smtp.ingest.pcap_reader import read_pcap
+
         with pytest.raises(FileNotFoundError):
             read_pcap("/nonexistent/test.pcap")
 
@@ -170,16 +180,24 @@ class TestPcapReader:
 class TestProtocolIdentification:
     """Test protocol detection matches labels.json."""
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-        "smtp_expired_cert", "smtp_self_signed_weak_key",
-        "smtp_starttls_stripped", "smtp_plaintext",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "smtp_starttls_stripped",
+            "smtp_plaintext",
+        ],
+    )
     def test_smtp_detection(self, scenario, labels):
         """SMTP sessions should be identified as SMTP."""
         result = _analyze_pcap(_get_pcap_path(scenario))
-        assert result["proto_id"].protocol.value == "smtp", \
+        assert result["proto_id"].protocol.value == "smtp", (
             f"{scenario}: expected smtp, got {result['proto_id'].protocol.value}"
+        )
 
     def test_imap_detection(self, labels):
         """IMAP session should be identified as IMAP."""
@@ -195,21 +213,25 @@ class TestProtocolIdentification:
 class TestTLSMode:
     """Test TLS mode detection matches labels.json."""
 
-    @pytest.mark.parametrize("scenario,expected_mode", [
-        ("smtp_tls12_good", "starttls"),
-        ("smtp_tls13_good", "implicit"),
-        ("smtp_tls10_rc4", "starttls"),
-        ("smtp_expired_cert", "starttls"),
-        ("smtp_self_signed_weak_key", "starttls"),
-        ("smtp_plaintext", "none"),
-        ("imap_tls12_good", "implicit"),
-        ("pop3_sha1_cert", "starttls"),
-        ("smtp_no_forward_secrecy", "implicit"),
-    ])
+    @pytest.mark.parametrize(
+        "scenario,expected_mode",
+        [
+            ("smtp_tls12_good", "starttls"),
+            ("smtp_tls13_good", "implicit"),
+            ("smtp_tls10_rc4", "starttls"),
+            ("smtp_expired_cert", "starttls"),
+            ("smtp_self_signed_weak_key", "starttls"),
+            ("smtp_plaintext", "none"),
+            ("imap_tls12_good", "implicit"),
+            ("pop3_sha1_cert", "starttls"),
+            ("smtp_no_forward_secrecy", "implicit"),
+        ],
+    )
     def test_tls_mode(self, scenario, expected_mode, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
-        assert result["proto_id"].tls_mode.value == expected_mode, \
+        assert result["proto_id"].tls_mode.value == expected_mode, (
             f"{scenario}: expected tls_mode={expected_mode}, got {result['proto_id'].tls_mode.value}"
+        )
 
     def test_starttls_advertised_and_completed(self, labels):
         """STARTTLS should be marked as both advertised and completed."""
@@ -226,41 +248,51 @@ class TestTLSMode:
 class TestTLSHandshake:
     """Test TLS handshake parsing matches labels.json."""
 
-    @pytest.mark.parametrize("scenario,expected_version", [
-        ("smtp_tls12_good", "TLS1.2"),
-        ("smtp_tls13_good", "TLS1.3"),
-        ("smtp_tls10_rc4", "TLS1.0"),
-        ("smtp_expired_cert", "TLS1.2"),
-        ("smtp_self_signed_weak_key", "TLS1.2"),
-        ("imap_tls12_good", "TLS1.2"),
-        ("pop3_sha1_cert", "TLS1.2"),
-        ("smtp_no_forward_secrecy", "TLS1.2"),
-    ])
+    @pytest.mark.parametrize(
+        "scenario,expected_version",
+        [
+            ("smtp_tls12_good", "TLS1.2"),
+            ("smtp_tls13_good", "TLS1.3"),
+            ("smtp_tls10_rc4", "TLS1.0"),
+            ("smtp_expired_cert", "TLS1.2"),
+            ("smtp_self_signed_weak_key", "TLS1.2"),
+            ("imap_tls12_good", "TLS1.2"),
+            ("pop3_sha1_cert", "TLS1.2"),
+            ("smtp_no_forward_secrecy", "TLS1.2"),
+        ],
+    )
     def test_tls_version(self, scenario, expected_version, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         hs = result["handshake"]
         assert hs is not None, f"{scenario}: no handshake parsed"
-        assert hs.tls_version_negotiated == expected_version, \
+        assert hs.tls_version_negotiated == expected_version, (
             f"{scenario}: expected {expected_version}, got {hs.tls_version_negotiated}"
+        )
 
-    @pytest.mark.parametrize("scenario,expected_cipher", [
-        ("smtp_tls12_good", "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"),
-        ("smtp_tls13_good", "TLS_AES_128_GCM_SHA256"),
-        ("smtp_tls10_rc4", "TLS_RSA_WITH_RC4_128_SHA"),
-        ("smtp_no_forward_secrecy", "TLS_RSA_WITH_AES_128_GCM_SHA256"),
-    ])
+    @pytest.mark.parametrize(
+        "scenario,expected_cipher",
+        [
+            ("smtp_tls12_good", "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"),
+            ("smtp_tls13_good", "TLS_AES_128_GCM_SHA256"),
+            ("smtp_tls10_rc4", "TLS_RSA_WITH_RC4_128_SHA"),
+            ("smtp_no_forward_secrecy", "TLS_RSA_WITH_AES_128_GCM_SHA256"),
+        ],
+    )
     def test_cipher_suite(self, scenario, expected_cipher, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         hs = result["handshake"]
         assert hs.cipher_suite_negotiated == expected_cipher
 
-    @pytest.mark.parametrize("scenario,expected_fs", [
-        ("smtp_tls12_good", True),
-        ("smtp_tls13_good", True),
-        ("smtp_tls10_rc4", False),
-        ("smtp_no_forward_secrecy", False),
-        ("smtp_self_signed_weak_key", False),
-    ])
+    @pytest.mark.parametrize(
+        "scenario,expected_fs",
+        [
+            ("smtp_tls12_good", True),
+            ("smtp_tls13_good", True),
+            ("smtp_tls10_rc4", False),
+            ("smtp_no_forward_secrecy", False),
+            ("smtp_self_signed_weak_key", False),
+        ],
+    )
     def test_forward_secrecy(self, scenario, expected_fs, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         hs = result["handshake"]
@@ -276,11 +308,18 @@ class TestTLSHandshake:
 class TestCertificateParsing:
     """Test certificate extraction and parsing."""
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls10_rc4", "smtp_expired_cert",
-        "smtp_self_signed_weak_key", "imap_tls12_good", "pop3_sha1_cert",
-        "smtp_no_forward_secrecy",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "imap_tls12_good",
+            "pop3_sha1_cert",
+            "smtp_no_forward_secrecy",
+        ],
+    )
     def test_certificate_extracted(self, scenario, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         assert len(result["certificates"]) >= 1, f"{scenario}: no certificates extracted"
@@ -306,6 +345,7 @@ class TestCertificateParsing:
     def test_expired_cert_detection(self, labels):
         """Expired cert should have not_after in the past."""
         from datetime import datetime
+
         result = _analyze_pcap(_get_pcap_path("smtp_expired_cert"))
         cert = result["certificates"][0]
         now = datetime.now(UTC)
@@ -318,34 +358,49 @@ class TestCertificateParsing:
         """SHA-1 signature algorithm should be detected."""
         result = _analyze_pcap(_get_pcap_path("pop3_sha1_cert"))
         cert = result["certificates"][0]
-        assert cert.signature_algorithm == "sha1", \
-            f"Expected sha1, got {cert.signature_algorithm}"
+        assert cert.signature_algorithm == "sha1", f"Expected sha1, got {cert.signature_algorithm}"
 
 
 class TestFingerprints:
     """Test JA3/JA3S/JA4/JA4S fingerprint computation."""
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-        "imap_tls12_good", "pop3_sha1_cert",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+            "imap_tls12_good",
+            "pop3_sha1_cert",
+        ],
+    )
     def test_ja3_computed(self, scenario, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         fp = result["fingerprints"]
         assert fp is not None
         assert len(fp.ja3) == 32, f"{scenario}: JA3 should be 32 hex chars, got {len(fp.ja3)}"
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+        ],
+    )
     def test_ja3s_computed(self, scenario, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         fp = result["fingerprints"]
         assert len(fp.ja3s) == 32
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+        ],
+    )
     def test_ja4_computed(self, scenario, labels):
         result = _analyze_pcap(_get_pcap_path(scenario))
         fp = result["fingerprints"]
@@ -363,8 +418,10 @@ class TestRuleEngine:
     def _get_findings_for(self, scenario: str) -> list:
         result = _analyze_pcap(_get_pcap_path(scenario))
         findings, _, _, _ = _run_rules(
-            result["proto_id"], result["handshake"],
-            result["certificates"], result["reassembled"],
+            result["proto_id"],
+            result["handshake"],
+            result["certificates"],
+            result["reassembled"],
         )
         return findings
 
@@ -438,12 +495,21 @@ class TestRuleEngine:
 
     # ── Comprehensive labels check ──
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-        "smtp_expired_cert", "smtp_self_signed_weak_key",
-        "smtp_starttls_stripped", "smtp_plaintext",
-        "imap_tls12_good", "pop3_sha1_cert", "smtp_no_forward_secrecy",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "smtp_starttls_stripped",
+            "smtp_plaintext",
+            "imap_tls12_good",
+            "pop3_sha1_cert",
+            "smtp_no_forward_secrecy",
+        ],
+    )
     def test_expected_rules_fired(self, scenario, labels):
         """Every rule in expected_rules_fired must actually fire."""
         expected = set(labels[scenario].get("expected_rules_fired", []))
@@ -452,19 +518,30 @@ class TestRuleEngine:
         missing = expected - actual
         assert not missing, f"{scenario}: expected rules {missing} did not fire. Fired: {actual}"
 
-    @pytest.mark.parametrize("scenario", [
-        "smtp_tls12_good", "smtp_tls13_good", "smtp_tls10_rc4",
-        "smtp_expired_cert", "smtp_self_signed_weak_key",
-        "smtp_starttls_stripped", "smtp_plaintext",
-        "imap_tls12_good", "pop3_sha1_cert", "smtp_no_forward_secrecy",
-    ])
+    @pytest.mark.parametrize(
+        "scenario",
+        [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "smtp_starttls_stripped",
+            "smtp_plaintext",
+            "imap_tls12_good",
+            "pop3_sha1_cert",
+            "smtp_no_forward_secrecy",
+        ],
+    )
     def test_expected_rules_silent(self, scenario, labels):
         """Every rule in expected_rules_silent must NOT fire (false-positive check)."""
         silent = set(labels[scenario].get("expected_rules_silent", []))
         findings = self._get_findings_for(scenario)
         actual = self._finding_rule_ids(findings)
         false_positives = silent & actual
-        assert not false_positives, f"{scenario}: false positive — rules {false_positives} fired unexpectedly"
+        assert not false_positives, (
+            f"{scenario}: false positive — rules {false_positives} fired unexpectedly"
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -481,8 +558,10 @@ class TestFeatureVector:
 
         result = _analyze_pcap(_get_pcap_path(scenario))
         findings, session, handshake_model, cert_models = _run_rules(
-            result["proto_id"], result["handshake"],
-            result["certificates"], result["reassembled"],
+            result["proto_id"],
+            result["handshake"],
+            result["certificates"],
+            result["reassembled"],
         )
         fv = build_feature_vector(session, handshake_model, cert_models, findings)
         return fv, findings
@@ -517,8 +596,10 @@ class TestRiskScoring:
 
         result = _analyze_pcap(_get_pcap_path(scenario))
         findings, session, handshake_model, cert_models = _run_rules(
-            result["proto_id"], result["handshake"],
-            result["certificates"], result["reassembled"],
+            result["proto_id"],
+            result["handshake"],
+            result["certificates"],
+            result["reassembled"],
         )
         fv = build_feature_vector(session, handshake_model, cert_models, findings)
         model = RiskModel()
@@ -531,17 +612,25 @@ class TestRiskScoring:
 
     def test_plaintext_session_critical_risk(self):
         risk, _ = self._score_scenario("smtp_plaintext")
-        assert risk.score_0_100 >= 25, f"Plaintext session should be at least medium risk, got {risk.score_0_100}"
+        assert risk.score_0_100 >= 25, (
+            f"Plaintext session should be at least medium risk, got {risk.score_0_100}"
+        )
 
     def test_bad_session_high_risk(self):
         risk, _ = self._score_scenario("smtp_tls10_rc4")
-        assert risk.score_0_100 >= 50, f"TLS1.0+RC4 session should be high risk, got {risk.score_0_100}"
+        assert risk.score_0_100 >= 50, (
+            f"TLS1.0+RC4 session should be high risk, got {risk.score_0_100}"
+        )
 
     def test_worst_session_highest_score(self):
         """The worst-configured session should score at or near the top."""
         scores = {}
-        for scenario in ["smtp_tls12_good", "smtp_tls10_rc4", "smtp_plaintext",
-                         "smtp_self_signed_weak_key"]:
+        for scenario in [
+            "smtp_tls12_good",
+            "smtp_tls10_rc4",
+            "smtp_plaintext",
+            "smtp_self_signed_weak_key",
+        ]:
             risk, _ = self._score_scenario(scenario)
             scores[scenario] = risk.score_0_100
 
@@ -570,13 +659,21 @@ class TestAnomalyDetection:
 
         # Build feature vectors for several scenarios
         vectors = []
-        for scenario in ["smtp_tls12_good", "smtp_tls13_good", "imap_tls12_good",
-                         "smtp_tls10_rc4", "smtp_expired_cert",
-                         "smtp_self_signed_weak_key", "smtp_plaintext"]:
+        for scenario in [
+            "smtp_tls12_good",
+            "smtp_tls13_good",
+            "imap_tls12_good",
+            "smtp_tls10_rc4",
+            "smtp_expired_cert",
+            "smtp_self_signed_weak_key",
+            "smtp_plaintext",
+        ]:
             result = _analyze_pcap(_get_pcap_path(scenario))
             findings, session, handshake_model, cert_models = _run_rules(
-                result["proto_id"], result["handshake"],
-                result["certificates"], result["reassembled"],
+                result["proto_id"],
+                result["handshake"],
+                result["certificates"],
+                result["reassembled"],
             )
             fv = build_feature_vector(session, handshake_model, cert_models, findings)
             vectors.append(fv)
@@ -604,8 +701,10 @@ class TestHostRollup:
         for scenario in ["smtp_tls12_good", "smtp_tls10_rc4"]:
             result = _analyze_pcap(_get_pcap_path(scenario))
             findings, session, handshake_model, cert_models = _run_rules(
-                result["proto_id"], result["handshake"],
-                result["certificates"], result["reassembled"],
+                result["proto_id"],
+                result["handshake"],
+                result["certificates"],
+                result["reassembled"],
             )
             fv = build_feature_vector(session, handshake_model, cert_models, findings)
             model = RiskModel()
@@ -630,6 +729,7 @@ class TestDemoPcap:
 
     def test_demo_pcap_loads(self):
         from secure_smtp.ingest.pcap_reader import read_pcap
+
         demo_path = FIXTURES_DIR / "demo_composite.pcap"
         streams = read_pcap(str(demo_path))
         assert len(streams) >= 5, f"Demo PCAP should have multiple streams, got {len(streams)}"

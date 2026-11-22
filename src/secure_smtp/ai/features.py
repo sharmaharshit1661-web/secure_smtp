@@ -181,18 +181,14 @@ def build_feature_vector(
 
     # ── STARTTLS features ──
 
-    features[9] = 1.0 if (
-        session.starttls_advertised and not session.starttls_completed
-    ) else 0.0
+    features[9] = 1.0 if (session.starttls_advertised and not session.starttls_completed) else 0.0
 
     # ── Finding features ──
 
     features[10] = float(len(findings))
 
     if findings:
-        max_severity = max(
-            SEVERITY_ORDINAL.get(f.severity, 0) for f in findings
-        )
+        max_severity = max(SEVERITY_ORDINAL.get(f.severity, 0) for f in findings)
         features[11] = float(max_severity)
 
     return fv

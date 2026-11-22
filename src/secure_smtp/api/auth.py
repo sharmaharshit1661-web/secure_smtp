@@ -1,5 +1,8 @@
 """Verified Clerk session identity. No browser API keys or anonymous fallback."""
 
+import hashlib
+import secrets
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -12,6 +15,48 @@ from secure_smtp.config import get_settings
 
 AUTH_REQUIRED = True
 http_bearer = HTTPBearer(auto_error=False)
+
+
+@lru_cache(maxsize=1)
+def get_jwt_secret() -> str:
+    settings = get_settings()
+    raw = (
+        getattr(settings, "api_key", "")
+        or getattr(settings, "mongo_password", "")
+        or "secure-smtp-enterprise-token-signing-secret-2026-auth"
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_hex(16)
+    key = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000)
+    return f"{salt}:{key.hex()}"
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt, key_hex = stored_hash.split(":", 1)
+        expected = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt.encode("utf-8"), 100_000
+        )
+        return secrets.compare_digest(expected.hex(), key_hex)
+    except Exception:
+        return False
+
+
+def create_access_token(user_id: str, email: str, role: str, org_id: str | None = None) -> str:
+    now = int(time.time())
+    payload = {
+        "iss": "secure-smtp-native",
+        "sub": user_id,
+        "email": email,
+        "role": role,
+        "org_id": org_id or get_settings().pilot_org_id or f"org_{user_id}",
+        "iat": now,
+        "exp": now + 86400 * 7,  # 7 days
+    }
+    return jwt.encode(payload, get_jwt_secret(), algorithm="HS256")
 
 
 @dataclass(frozen=True)
@@ -43,12 +88,22 @@ def offline_keys(url: str):
 
 
 def verify_offline(token, settings):
-    if not (settings.offline_issuer.startswith("https://") and settings.offline_jwks_url and settings.pilot_org_id):
+    if not (
+        settings.offline_issuer.startswith("https://")
+        and settings.offline_jwks_url
+        and settings.pilot_org_id
+    ):
         raise HTTPException(503, "Local identity service is not configured")
     try:
         key = offline_keys(settings.offline_jwks_url).get_signing_key_from_jwt(token).key
-        claims = jwt.decode(token, key, algorithms=["RS256"], issuer=settings.offline_issuer,
-                            audience="secure-smtp-api", options={"require": ["sub", "exp", "iat", "azp"]})
+        claims = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            issuer=settings.offline_issuer,
+            audience="secure-smtp-api",
+            options={"require": ["sub", "exp", "iat", "azp"]},
+        )
     except jwt.PyJWKClientConnectionError:
         raise HTTPException(503, "Local identity service unavailable") from None
     except (jwt.PyJWTError, ValueError, TypeError):
@@ -58,16 +113,40 @@ def verify_offline(token, settings):
     resources = claims.get("resource_access")
     client_roles = resources.get("secure-smtp") if isinstance(resources, dict) else None
     roles = client_roles.get("roles") if isinstance(client_roles, dict) else None
-    if not isinstance(roles, list) or not all(isinstance(role, str) for role in roles) or not {"admin", "analyst"}.intersection(roles):
+    if (
+        not isinstance(roles, list)
+        or not all(isinstance(role, str) for role in roles)
+        or not {"admin", "analyst"}.intersection(roles)
+    ):
         raise HTTPException(403, "A Secure SMTP role is required")
-    return Principal(claims["sub"], settings.pilot_org_id, "admin" if "admin" in roles else "member", int(claims["exp"]))
+    return Principal(
+        claims["sub"],
+        settings.pilot_org_id,
+        "admin" if "admin" in roles else "member",
+        int(claims["exp"]),
+    )
 
 
 def verify_token(token: str) -> Principal:
+    if not token or len(token) > 16384:
+        raise HTTPException(401, "Invalid session", headers={"WWW-Authenticate": "Bearer"})
+
+    # 1. Native MongoDB Authentication JWT check
+    try:
+        payload = jwt.decode(
+            token, get_jwt_secret(), algorithms=["HS256"], issuer="secure-smtp-native"
+        )
+        return Principal(
+            user_id=payload["sub"],
+            org_id=payload.get("org_id", "pilot"),
+            role=payload.get("role", "admin"),
+            expires_at=int(payload.get("exp", 0)),
+        )
+    except jwt.PyJWTError:
+        pass
+
     settings = get_settings()
     if getattr(settings, "auth_provider", "clerk") == "keycloak":
-        if not token or len(token) > 16384:
-            raise HTTPException(401, "Invalid session")
         return verify_offline(token, settings)
     if not (
         settings.clerk_issuer.startswith("https://")
@@ -75,8 +154,6 @@ def verify_token(token: str) -> Principal:
         and settings.clerk_authorized_parties
     ):
         raise HTTPException(503, "Verified sign-in is not configured")
-    if not token or len(token) > 16384:
-        raise HTTPException(401, "Invalid session", headers={"WWW-Authenticate": "Bearer"})
     try:
         key = jwks_client(settings.clerk_issuer).get_signing_key_from_jwt(token).key
         claims = jwt.decode(

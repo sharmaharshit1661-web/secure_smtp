@@ -57,7 +57,9 @@ def test_cors_actual_request_allowed_origin():
     assert response.status_code == 401
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
     assert response.headers.get("access-control-allow-credentials") == "true"
-    assert "content-disposition" in response.headers.get("access-control-expose-headers", "").lower()
+    assert (
+        "content-disposition" in response.headers.get("access-control-expose-headers", "").lower()
+    )
 
 
 def test_cors_untrusted_origin_rejected():

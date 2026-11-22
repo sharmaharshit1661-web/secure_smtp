@@ -68,10 +68,19 @@ async def simulate_live_session(scenario_id: str) -> dict[str, Any]:
     job_id = str(uuid.uuid4())
     from secure_smtp.config import get_settings
     from secure_smtp.db.mongodb import get_jobs_col
+
     org_id = get_settings().pilot_org_id
     if not org_id:
         raise ValueError("Pilot organization required")
-    get_jobs_col().insert_one({"job_id": job_id, "org_id": org_id, "owner_id": "synthetic_replay", "source_kind": "synthetic_replay", "status": "queued"})
+    get_jobs_col().insert_one(
+        {
+            "job_id": job_id,
+            "org_id": org_id,
+            "owner_id": "synthetic_replay",
+            "source_kind": "synthetic_replay",
+            "status": "queued",
+        }
+    )
 
     # Run analysis pipeline
     _run_analysis(job_id, str(pcap_file))

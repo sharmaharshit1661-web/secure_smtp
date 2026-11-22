@@ -47,8 +47,12 @@ class CustomMailDispatchRequest(BaseModel):
 async def websocket_live_endpoint(websocket: WebSocket) -> None:
     """Real-time event stream for incoming packet analyses, simulated sessions, and security alerts."""
     settings = get_settings()
-    origins = settings.cors_origins if getattr(settings, 'auth_provider', 'clerk') == 'keycloak' else settings.clerk_authorized_parties
-    if websocket.headers.get('origin') not in origins:
+    origins = (
+        settings.cors_origins
+        if getattr(settings, "auth_provider", "clerk") == "keycloak"
+        else settings.clerk_authorized_parties
+    )
+    if websocket.headers.get("origin") not in origins:
         await websocket.close(code=4403)
         return
     manager = get_connection_manager()
@@ -56,16 +60,19 @@ async def websocket_live_endpoint(websocket: WebSocket) -> None:
     try:
         message = await asyncio.wait_for(websocket.receive_text(), timeout=5)
         if len(message) > 16400:
-            raise ValueError('Authentication message too large')
+            raise ValueError("Authentication message too large")
         import json
+
         payload = json.loads(message)
-        principal = await run_in_threadpool(verify_token, payload.get('token', ''))
+        principal = await run_in_threadpool(verify_token, payload.get("token", ""))
         await manager.connect(websocket, principal, accepted=True)
-        await websocket.send_json({'event': 'AUTHENTICATED'})
+        await websocket.send_json({"event": "AUTHENTICATED"})
         while time.time() < principal.expires_at:
-            data = await asyncio.wait_for(websocket.receive_text(), timeout=max(.01, principal.expires_at-time.time()))
-            if data == 'ping':
-                await websocket.send_text('pong')
+            data = await asyncio.wait_for(
+                websocket.receive_text(), timeout=max(0.01, principal.expires_at - time.time())
+            )
+            if data == "ping":
+                await websocket.send_text("pong")
         await websocket.close(code=4401)
     except WebSocketDisconnect:
         pass
@@ -145,15 +152,19 @@ async def clear_live_history(principal: Principal = Depends(require_admin)) -> d
     deleted_hosts = 0
     for host in hosts_col.find(scope(principal, {"source_kind": "controlled_lab"})):
         if not sessions_col.find_one(scope(principal, {"host_id": host["id"]})):
-            deleted_hosts += hosts_col.delete_one(scope(principal, {"id": host["id"]})).deleted_count
+            deleted_hosts += hosts_col.delete_one(
+                scope(principal, {"id": host["id"]})
+            ).deleted_count
 
     # Broadcast reset event over WebSocket so all connected clients clear live tickers
     manager = get_connection_manager()
-    await manager.broadcast({
-        "event": "DATABASE_RESET",
-        "org_id": principal.org_id,
-        "timestamp": datetime.now(UTC).isoformat(),
-    })
+    await manager.broadcast(
+        {
+            "event": "DATABASE_RESET",
+            "org_id": principal.org_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+        }
+    )
 
     return {
         "status": "cleared",

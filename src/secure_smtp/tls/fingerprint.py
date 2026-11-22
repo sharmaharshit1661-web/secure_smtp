@@ -20,8 +20,22 @@ logger = logging.getLogger(__name__)
 
 # GREASE values to filter out (per JA3 spec)
 GREASE_VALUES = {
-    0x0A0A, 0x1A1A, 0x2A2A, 0x3A3A, 0x4A4A, 0x5A5A, 0x6A6A, 0x7A7A,
-    0x8A8A, 0x9A9A, 0xAAAA, 0xBABA, 0xCACA, 0xDADA, 0xEAEA, 0xFAFA,
+    0x0A0A,
+    0x1A1A,
+    0x2A2A,
+    0x3A3A,
+    0x4A4A,
+    0x5A5A,
+    0x6A6A,
+    0x7A7A,
+    0x8A8A,
+    0x9A9A,
+    0xAAAA,
+    0xBABA,
+    0xCACA,
+    0xDADA,
+    0xEAEA,
+    0xFAFA,
 }
 
 
@@ -80,11 +94,12 @@ def compute_ja3(client_hello: ParsedClientHello) -> tuple[str, str]:
         ec_data = client_hello.extensions[10]
         if len(ec_data) >= 2:
             import struct
+
             list_len = struct.unpack("!H", ec_data[0:2])[0]
             curves = []
             pos = 2
             while pos + 2 <= 2 + list_len and pos + 2 <= len(ec_data):
-                curve = struct.unpack("!H", ec_data[pos:pos + 2])[0]
+                curve = struct.unpack("!H", ec_data[pos : pos + 2])[0]
                 if curve not in GREASE_VALUES:
                     curves.append(curve)
                 pos += 2
@@ -96,7 +111,7 @@ def compute_ja3(client_hello: ParsedClientHello) -> tuple[str, str]:
         pf_data = client_hello.extensions[11]
         if len(pf_data) >= 1:
             pf_len = pf_data[0]
-            formats = list(pf_data[1:1 + pf_len])
+            formats = list(pf_data[1 : 1 + pf_len])
             formats_str = "-".join(str(f) for f in formats)
 
     raw = f"{version},{ciphers_str},{extensions_str},{curves_str},{formats_str}"
@@ -166,7 +181,7 @@ def _compute_ja4_a_section(client_hello: ParsedClientHello) -> str:
         if len(alpn_data) >= 4:
             alpn_str_len = alpn_data[2]
             if alpn_str_len > 0 and 3 + alpn_str_len <= len(alpn_data):
-                first_alpn = alpn_data[3:3 + alpn_str_len].decode("ascii", errors="replace")
+                first_alpn = alpn_data[3 : 3 + alpn_str_len].decode("ascii", errors="replace")
                 # Take first and last character
                 if len(first_alpn) >= 2:
                     alpn = first_alpn[0] + first_alpn[-1]
@@ -207,11 +222,12 @@ def compute_ja4(client_hello: ParsedClientHello) -> str:
         sig_data = client_hello.extensions[13]
         if len(sig_data) >= 2:
             import struct
+
             sig_len = struct.unpack("!H", sig_data[0:2])[0]
             sig_algos = []
             pos = 2
             while pos + 2 <= 2 + sig_len and pos + 2 <= len(sig_data):
-                sa = struct.unpack("!H", sig_data[pos:pos + 2])[0]
+                sa = struct.unpack("!H", sig_data[pos : pos + 2])[0]
                 sig_algos.append(sa)
                 pos += 2
             sig_str = ",".join(f"{s:04x}" for s in sig_algos)
@@ -249,7 +265,7 @@ def compute_ja4s(server_hello: ParsedServerHello) -> str:
         if len(alpn_data) >= 4:
             alpn_str_len = alpn_data[2]
             if alpn_str_len > 0 and 3 + alpn_str_len <= len(alpn_data):
-                first_alpn = alpn_data[3:3 + alpn_str_len].decode("ascii", errors="replace")
+                first_alpn = alpn_data[3 : 3 + alpn_str_len].decode("ascii", errors="replace")
                 if len(first_alpn) >= 2:
                     alpn = first_alpn[0] + first_alpn[-1]
                 elif len(first_alpn) == 1:

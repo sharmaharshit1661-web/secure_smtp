@@ -32,7 +32,12 @@ class Collection:
 
     def find(self, query=None, *args, **kwargs):
         return Cursor(
-            dict(r) for r in self.records if all((r.get(k) != v["$ne"] if isinstance(v, dict) and "$ne" in v else r.get(k) == v) for k, v in (query or {}).items())
+            dict(r)
+            for r in self.records
+            if all(
+                (r.get(k) != v["$ne"] if isinstance(v, dict) and "$ne" in v else r.get(k) == v)
+                for k, v in (query or {}).items()
+            )
         )
 
     def find_one(self, query=None, *args, **kwargs):
@@ -244,27 +249,33 @@ def test_broker_never_broadcasts_unowned_or_foreign_events():
 
 def test_analysis_deadline_marks_failure_and_releases_slot(monkeypatch, tmp_path):
     import subprocess
-    path = tmp_path / 'capture.pcap'
+
+    path = tmp_path / "capture.pcap"
     path.write_bytes(capture())
     jobs = Mock()
-    monkeypatch.setattr(analysis, 'get_jobs_col', lambda: jobs)
-    monkeypatch.setattr(analysis, 'get_settings', lambda: SimpleNamespace(analysis_timeout_seconds=1))
-    monkeypatch.setattr(analysis.subprocess, 'run', Mock(side_effect=subprocess.TimeoutExpired('worker', 1)))
+    monkeypatch.setattr(analysis, "get_jobs_col", lambda: jobs)
+    monkeypatch.setattr(
+        analysis, "get_settings", lambda: SimpleNamespace(analysis_timeout_seconds=1)
+    )
+    monkeypatch.setattr(
+        analysis.subprocess, "run", Mock(side_effect=subprocess.TimeoutExpired("worker", 1))
+    )
     analysis._slot.acquire()
-    analysis.process_job('job-a', str(path))
+    analysis.process_job("job-a", str(path))
     assert not path.exists()
     assert not analysis._slot.locked()
-    assert jobs.update_one.call_args.args[1]['$set']['status'] == 'failed'
+    assert jobs.update_one.call_args.args[1]["$set"]["status"] == "failed"
 
 
 def test_raw_request_limit_runs_before_multipart_spooling(monkeypatch):
     from secure_smtp.api import main
+
     app = FastAPI()
     app.include_router(analysis.router)
     app.add_middleware(main.UploadBodyLimit)
     app.dependency_overrides[verify_api_key] = lambda: PILOT
-    monkeypatch.setattr(main, 'get_settings', lambda: SimpleNamespace(max_upload_bytes=10))
-    response = TestClient(app).post('/api/analyze', files={'file': ('huge.pcap', b'x' * 70000)})
+    monkeypatch.setattr(main, "get_settings", lambda: SimpleNamespace(max_upload_bytes=10))
+    response = TestClient(app).post("/api/analyze", files={"file": ("huge.pcap", b"x" * 70000)})
     assert response.status_code == 413
 
 
@@ -304,8 +315,17 @@ def test_request_limit_counts_chunked_body_before_handler_runs():
         async def send(message):
             output.append(message)
 
-        await app({"type": "http", "method": "POST", "path": "/api/test-body",
-                   "headers": [], "query_string": b""}, receive, send)
+        await app(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": "/api/test-body",
+                "headers": [],
+                "query_string": b"",
+            },
+            receive,
+            send,
+        )
         assert output[0]["status"] == 413
         assert not completed
 

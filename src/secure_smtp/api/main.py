@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 # ── Application Lifespan Handler ──
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup initialization and graceful shutdown."""
@@ -55,16 +56,25 @@ async def lifespan(app: FastAPI):
     init_db_indexes()
 
     # Single-instance pilot recovery: interrupted jobs are visible failures, never false success.
-    get_jobs_col().update_many({"status": {"$in": ["queued", "running"]}}, {"$set": {"status": "failed", "error_message": "Backend restarted during analysis. Upload the capture again."}})
+    get_jobs_col().update_many(
+        {"status": {"$in": ["queued", "running"]}},
+        {
+            "$set": {
+                "status": "failed",
+                "error_message": "Backend restarted during analysis. Upload the capture again.",
+            }
+        },
+    )
 
     # Complete the publication step if the process stopped after report completion.
     from secure_smtp.monitoring.service import refresh_hosts
+
     for job in get_jobs_col().find({"status": "done"}):
         query = {"job_id": job.get("job_id"), "published": False}
         if job.get("org_id"):
             query["org_id"] = job["org_id"]
         get_sessions_col().update_many(query, {"$set": {"published": True}})
-    for workspace in get_jobs_col().distinct('org_id'):
+    for workspace in get_jobs_col().distinct("org_id"):
         if isinstance(workspace, str) and workspace:
             refresh_hosts(workspace)
 
@@ -89,14 +99,17 @@ async def lifespan(app: FastAPI):
         except Exception as lab_err:
             logger.warning("Could not auto-start Live Mail Lab: %s", lab_err)
     else:
-        logger.info("Live Mail Lab is disabled by configuration (SECURE_SMTP_ENABLE_LIVE_LAB=false).")
+        logger.info(
+            "Live Mail Lab is disabled by configuration (SECURE_SMTP_ENABLE_LIVE_LAB=false)."
+        )
 
     async def maintenance():
         from secure_smtp.db.mongodb import get_database
         from secure_smtp.operations.lifecycle import enforce_retention
+
         while True:
             try:
-                workspaces = await run_in_threadpool(lambda: get_jobs_col().distinct('org_id'))
+                workspaces = await run_in_threadpool(lambda: get_jobs_col().distinct("org_id"))
             except Exception:
                 logger.error("Retention workspace discovery failed")
                 workspaces = []
@@ -107,14 +120,22 @@ async def lifespan(app: FastAPI):
                     deleted = await run_in_threadpool(enforce_retention, workspace)
                     status = {"status": "healthy", "deleted": deleted}
                 except Exception:
-                    status = {"status": "failed", "error": "Retention cleanup failed; administrator review required"}
+                    status = {
+                        "status": "failed",
+                        "error": "Retention cleanup failed; administrator review required",
+                    }
                 try:
-                    await run_in_threadpool(lambda: get_database().operations.update_one(
-                        {"org_id": workspace, "kind": "retention"},
-                        {"$set": {**status, "checked_at": datetime.now(UTC)}}, upsert=True))
+                    await run_in_threadpool(
+                        lambda: get_database().operations.update_one(
+                            {"org_id": workspace, "kind": "retention"},
+                            {"$set": {**status, "checked_at": datetime.now(UTC)}},
+                            upsert=True,
+                        )
+                    )
                 except Exception:
                     logger.error("Retention status could not be persisted")
             await asyncio.sleep(3600)
+
     maintenance_task = asyncio.create_task(maintenance())
     try:
         yield
@@ -143,7 +164,9 @@ app = FastAPI(
     description="Passive Cryptographic Posture Intelligence & Explainable AI Risk Attribution for SMTP / IMAP / POP3",
     version="0.1.0",
     lifespan=lifespan,
-    docs_url=None, redoc_url=None, openapi_url=None,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
 
 # ── Configuration & CORS ──
@@ -172,6 +195,10 @@ REPORTS_DIR = settings.reports_dir
 
 
 # ── Register Domain Routers ──
+
+from secure_smtp.api.routers.auth import router as auth_router
+
+app.include_router(auth_router)
 
 from secure_smtp.api.routers.agents import router as agents_router
 
@@ -208,22 +235,30 @@ __all__ = [
 
 class UploadBodyLimit:
     """Enforce a byte ceiling before multipart parsing, including chunked requests."""
+
     def __init__(self, app):
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        if scope['type'] != 'http' or not scope.get('path', '').startswith('/api/'):
+        if scope["type"] != "http" or not scope.get("path", "").startswith("/api/"):
             return await self.app(scope, receive, send)
         from fastapi import HTTPException
+
         total = 0
+
         async def bounded_receive():
             nonlocal total
             message = await receive()
-            total += len(message.get('body', b''))
-            limit = get_settings().max_upload_bytes + 65536 if scope.get('path') == '/api/analyze' else 524288
+            total += len(message.get("body", b""))
+            limit = (
+                get_settings().max_upload_bytes + 65536
+                if scope.get("path") == "/api/analyze"
+                else 524288
+            )
             if total > limit:
-                raise HTTPException(413, 'Upload exceeds request size limit')
+                raise HTTPException(413, "Upload exceeds request size limit")
             return message
+
         return await self.app(scope, bounded_receive, send)
 
 

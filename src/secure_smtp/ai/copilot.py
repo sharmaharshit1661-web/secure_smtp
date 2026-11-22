@@ -47,14 +47,27 @@ def generate_server_remediation(
     commands = []
     filepath = ""
 
-    has_cert_issue = any(k in finding_ids for k in ["weak-cert-key-rsa", "weak-cert-key-ecdsa", "weak-cert-signature", "cert-expired", "self-signed-cert"])
+    has_cert_issue = any(
+        k in finding_ids
+        for k in [
+            "weak-cert-key-rsa",
+            "weak-cert-key-ecdsa",
+            "weak-cert-signature",
+            "cert-expired",
+            "self-signed-cert",
+        ]
+    )
 
     if server == "postfix":
         filepath = "/etc/postfix/main.cf"
-        config_lines.append("# ====================================================================")
+        config_lines.append(
+            "# ===================================================================="
+        )
         config_lines.append("# Secure SMTP Hardening Directives for Postfix (MTA-STS & Modern TLS)")
         config_lines.append("# Rule-based Secure SMTP template; review before use")
-        config_lines.append("# ====================================================================\n")
+        config_lines.append(
+            "# ====================================================================\n"
+        )
 
         config_lines.append("# Enforce Mandatory TLS / STARTTLS")
         config_lines.append("smtpd_tls_security_level = encrypt")
@@ -62,20 +75,32 @@ def generate_server_remediation(
         config_lines.append("smtpd_tls_auth_only = yes\n")
 
         config_lines.append("# Ban Obsolete Protocols: Mandate TLS 1.2 minimum, prefer TLS 1.3")
-        config_lines.append("smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1, >=TLSv1.2")
+        config_lines.append(
+            "smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1, >=TLSv1.2"
+        )
         config_lines.append("smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1, >=TLSv1.2")
         config_lines.append("smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1, >=TLSv1.2\n")
 
-        config_lines.append("# Restrict Ciphers to AEAD (AES-GCM & ChaCha20) + Ephemeral Key Exchange (PFS)")
+        config_lines.append(
+            "# Restrict Ciphers to AEAD (AES-GCM & ChaCha20) + Ephemeral Key Exchange (PFS)"
+        )
         config_lines.append("smtpd_tls_mandatory_ciphers = high")
-        config_lines.append("tls_high_cipherlist = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256")
+        config_lines.append(
+            "tls_high_cipherlist = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+        )
         config_lines.append("smtpd_tls_eecdh_grade = ultra")
         config_lines.append("tls_preempt_cipherlist = yes\n")
 
         if has_cert_issue:
-            config_lines.append("# X.509 Certificate Chain (Ensure RSA >= 2048 or ECDSA P-256 with CA Root)")
-            config_lines.append("smtpd_tls_cert_file = /etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem")
-            config_lines.append("smtpd_tls_key_file = /etc/letsencrypt/live/mail.yourdomain.com/privkey.pem")
+            config_lines.append(
+                "# X.509 Certificate Chain (Ensure RSA >= 2048 or ECDSA P-256 with CA Root)"
+            )
+            config_lines.append(
+                "smtpd_tls_cert_file = /etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem"
+            )
+            config_lines.append(
+                "smtpd_tls_key_file = /etc/letsencrypt/live/mail.yourdomain.com/privkey.pem"
+            )
             config_lines.append("smtpd_tls_CAfile = /etc/ssl/certs/ca-certificates.crt\n")
 
         commands = [
@@ -87,20 +112,30 @@ def generate_server_remediation(
 
     elif server == "dovecot":
         filepath = "/etc/dovecot/conf.d/10-ssl.conf"
-        config_lines.append("# ====================================================================")
+        config_lines.append(
+            "# ===================================================================="
+        )
         config_lines.append("# Secure IMAP/POP3 Hardening Directives for Dovecot")
         config_lines.append("# Rule-based Secure SMTP template; review before use")
-        config_lines.append("# ====================================================================\n")
+        config_lines.append(
+            "# ====================================================================\n"
+        )
 
         config_lines.append("ssl = required")
         config_lines.append("ssl_min_protocol = TLSv1.2")
-        config_lines.append("ssl_cipher_list = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256")
+        config_lines.append(
+            "ssl_cipher_list = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+        )
         config_lines.append("ssl_prefer_server_ciphers = yes")
         config_lines.append("ssl_dh = </etc/dovecot/dh.pem\n")
 
         if has_cert_issue:
-            config_lines.append("ssl_cert = </etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem")
-            config_lines.append("ssl_key = </etc/letsencrypt/live/mail.yourdomain.com/privkey.pem\n")
+            config_lines.append(
+                "ssl_cert = </etc/letsencrypt/live/mail.yourdomain.com/fullchain.pem"
+            )
+            config_lines.append(
+                "ssl_key = </etc/letsencrypt/live/mail.yourdomain.com/privkey.pem\n"
+            )
 
         commands = [
             "sudo cp /etc/dovecot/conf.d/10-ssl.conf /etc/dovecot/conf.d/10-ssl.conf.bak",
@@ -111,35 +146,61 @@ def generate_server_remediation(
 
     elif server == "exchange":
         filepath = "Exchange_TLS_Hardening.ps1"
-        config_lines.append("# ====================================================================")
+        config_lines.append(
+            "# ===================================================================="
+        )
         config_lines.append("# Microsoft Exchange Server & Windows Schannel Registry Hardening")
-        config_lines.append("# Run as Administrator in elevated Exchange Management Shell (PowerShell)")
-        config_lines.append("# ====================================================================\n")
+        config_lines.append(
+            "# Run as Administrator in elevated Exchange Management Shell (PowerShell)"
+        )
+        config_lines.append(
+            "# ====================================================================\n"
+        )
 
         config_lines.append("# 1. Disable Legacy SSLv3, TLS 1.0, and TLS 1.1 in Windows Schannel")
         config_lines.append('$protocols = @("SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1")')
-        config_lines.append('foreach ($proto in $protocols) {')
-        config_lines.append('    $clientPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Client"')
-        config_lines.append('    $serverPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Server"')
-        config_lines.append('    New-Item -Path $clientPath -Force | Out-Null')
-        config_lines.append('    New-Item -Path $serverPath -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $clientPath -Name "Enabled" -Value 0 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $serverPath -Name "Enabled" -Value 0 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $clientPath -Name "DisabledByDefault" -Value 1 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $serverPath -Name "DisabledByDefault" -Value 1 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('}\n')
+        config_lines.append("foreach ($proto in $protocols) {")
+        config_lines.append(
+            '    $clientPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Client"'
+        )
+        config_lines.append(
+            '    $serverPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Server"'
+        )
+        config_lines.append("    New-Item -Path $clientPath -Force | Out-Null")
+        config_lines.append("    New-Item -Path $serverPath -Force | Out-Null")
+        config_lines.append(
+            '    New-ItemProperty -Path $clientPath -Name "Enabled" -Value 0 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append(
+            '    New-ItemProperty -Path $serverPath -Name "Enabled" -Value 0 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append(
+            '    New-ItemProperty -Path $clientPath -Name "DisabledByDefault" -Value 1 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append(
+            '    New-ItemProperty -Path $serverPath -Name "DisabledByDefault" -Value 1 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append("}\n")
 
         config_lines.append("# 2. Enable TLS 1.2 & TLS 1.3")
         config_lines.append('$modern = @("TLS 1.2", "TLS 1.3")')
-        config_lines.append('foreach ($proto in $modern) {')
-        config_lines.append('    $serverPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Server"')
-        config_lines.append('    New-Item -Path $serverPath -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $serverPath -Name "Enabled" -Value 1 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('    New-ItemProperty -Path $serverPath -Name "DisabledByDefault" -Value 0 -PropertyType DWORD -Force | Out-Null')
-        config_lines.append('}\n')
+        config_lines.append("foreach ($proto in $modern) {")
+        config_lines.append(
+            '    $serverPath = "HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\$proto\\Server"'
+        )
+        config_lines.append("    New-Item -Path $serverPath -Force | Out-Null")
+        config_lines.append(
+            '    New-ItemProperty -Path $serverPath -Name "Enabled" -Value 1 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append(
+            '    New-ItemProperty -Path $serverPath -Name "DisabledByDefault" -Value 0 -PropertyType DWORD -Force | Out-Null'
+        )
+        config_lines.append("}\n")
 
         config_lines.append("# 3. Require TLS on Exchange Receive Connectors")
-        config_lines.append('Get-ReceiveConnector | Set-ReceiveConnector -RequireTLS $true -TlsDomainCapabilities "AcceptOorgProtocol"')
+        config_lines.append(
+            'Get-ReceiveConnector | Set-ReceiveConnector -RequireTLS $true -TlsDomainCapabilities "AcceptOorgProtocol"'
+        )
 
         commands = [
             "Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass",
@@ -150,11 +211,17 @@ def generate_server_remediation(
 
     elif server == "exim":
         filepath = "/etc/exim4/exim4.conf.localmacros"
-        config_lines.append("# ====================================================================")
+        config_lines.append(
+            "# ===================================================================="
+        )
         config_lines.append("# Exim4 MTA Modern TLS Directives")
-        config_lines.append("# ====================================================================\n")
+        config_lines.append(
+            "# ====================================================================\n"
+        )
         config_lines.append("MAIN_TLS_ENABLE = yes")
-        config_lines.append("tls_require_ciphers = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256")
+        config_lines.append(
+            "tls_require_ciphers = ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
+        )
         config_lines.append("openssl_options = +no_sslv2 +no_sslv3 +no_tlsv1 +no_tlsv1_1\n")
 
         commands = [
@@ -164,14 +231,22 @@ def generate_server_remediation(
 
     elif server == "sendmail":
         filepath = "/etc/mail/sendmail.mc"
-        config_lines.append("dnl ====================================================================")
+        config_lines.append(
+            "dnl ===================================================================="
+        )
         config_lines.append("dnl Sendmail Modern TLS Directives")
-        config_lines.append("dnl ====================================================================\n")
+        config_lines.append(
+            "dnl ====================================================================\n"
+        )
         config_lines.append("define(`confTLS_SRV_OPTIONS', `V')dnl")
         config_lines.append("LOCAL_CONFIG")
         config_lines.append("O CipherList=HIGH:!aNULL:!MD5:!RC4:!3DES")
-        config_lines.append("O ServerSSLOptions=+SSL_OP_NO_SSLv2 +SSL_OP_NO_SSLv3 +SSL_OP_NO_TLSv1 +SSL_OP_NO_TLSv1_1 +SSL_OP_CIPHER_SERVER_PREFERENCE")
-        config_lines.append("O ClientSSLOptions=+SSL_OP_NO_SSLv2 +SSL_OP_NO_SSLv3 +SSL_OP_NO_TLSv1 +SSL_OP_NO_TLSv1_1\n")
+        config_lines.append(
+            "O ServerSSLOptions=+SSL_OP_NO_SSLv2 +SSL_OP_NO_SSLv3 +SSL_OP_NO_TLSv1 +SSL_OP_NO_TLSv1_1 +SSL_OP_CIPHER_SERVER_PREFERENCE"
+        )
+        config_lines.append(
+            "O ClientSSLOptions=+SSL_OP_NO_SSLv2 +SSL_OP_NO_SSLv3 +SSL_OP_NO_TLSv1 +SSL_OP_NO_TLSv1_1\n"
+        )
 
         commands = [
             "sudo make -C /etc/mail",
@@ -208,7 +283,15 @@ def generate_incident_briefing(
     protocol = str(session.get("protocol", "SMTP")).upper()
 
     finding_ids = _get_active_finding_ids(findings)
-    risk_level = "CRITICAL" if risk_score >= 75 else "HIGH" if risk_score >= 50 else "MEDIUM" if risk_score >= 25 else "LOW"
+    risk_level = (
+        "CRITICAL"
+        if risk_score >= 75
+        else "HIGH"
+        if risk_score >= 50
+        else "MEDIUM"
+        if risk_score >= 25
+        else "LOW"
+    )
 
     memo_lines = [
         f"# 🛡️ Executive Incident Memo: Cryptographic Weakness on {dst_ip}",
@@ -236,9 +319,11 @@ def generate_incident_briefing(
             "Review the observed findings below; no additional weakness is inferred by this template."
         )
 
-    memo_lines.extend([
-        "\n## 2. Identified Threat Findings",
-    ])
+    memo_lines.extend(
+        [
+            "\n## 2. Identified Threat Findings",
+        ]
+    )
 
     if findings:
         for f in findings:
@@ -247,18 +332,22 @@ def generate_incident_briefing(
             rec = f.get("recommendation", "Review configuration")
             memo_lines.append(f"- **[{sev}]** {msg}\n  *Recommended Action:* {rec}")
     else:
-        memo_lines.append("- No configured rules fired on the observed evidence. Unobserved properties remain unknown.")
+        memo_lines.append(
+            "- No configured rules fired on the observed evidence. Unobserved properties remain unknown."
+        )
 
-    memo_lines.extend([
-        "\n## 3. Regulatory & Business Impact",
-        "- **Regulatory Non-Compliance:** Non-compliant TLS versions jeopardize PCI-DSS v4.0 audit qualification and federal NIST SP 800-52r2 compliance mandates.",
-        "- **Data Confidentiality:** Lack of Perfect Forward Secrecy (PFS) allows adversaries archiving encrypted traffic to decrypt past messages if server private keys are later compromised.",
-        "- **MITM Exposure:** Without MTA-STS / DANE TLSA enforcement, opportunistic STARTTLS remains susceptible to active network tampering.",
-        "\n## 4. Recommended 48-Hour Action Plan",
-        "1. **Review Configuration Guidance:** Test the rule-based template against your server version and mail-delivery requirements before applying any change.",
-        "2. **Enable MTA-STS & DANE:** Publish a strict `mta-sts.txt` policy and DNS TLSA record to mandate TLS encryption for all incoming relays.",
-        r"3. **Validate Certificates:** Ensure the active X.509 certificate has $\ge$ 2048-bit RSA or 256-bit ECDSA keys with SHA-256 signatures from a trusted CA.",
-    ])
+    memo_lines.extend(
+        [
+            "\n## 3. Regulatory & Business Impact",
+            "- **Regulatory Non-Compliance:** Non-compliant TLS versions jeopardize PCI-DSS v4.0 audit qualification and federal NIST SP 800-52r2 compliance mandates.",
+            "- **Data Confidentiality:** Lack of Perfect Forward Secrecy (PFS) allows adversaries archiving encrypted traffic to decrypt past messages if server private keys are later compromised.",
+            "- **MITM Exposure:** Without MTA-STS / DANE TLSA enforcement, opportunistic STARTTLS remains susceptible to active network tampering.",
+            "\n## 4. Recommended 48-Hour Action Plan",
+            "1. **Review Configuration Guidance:** Test the rule-based template against your server version and mail-delivery requirements before applying any change.",
+            "2. **Enable MTA-STS & DANE:** Publish a strict `mta-sts.txt` policy and DNS TLSA record to mandate TLS encryption for all incoming relays.",
+            r"3. **Validate Certificates:** Ensure the active X.509 certificate has $\ge$ 2048-bit RSA or 256-bit ECDSA keys with SHA-256 signatures from a trusted CA.",
+        ]
+    )
 
     return {
         "generation_method": "rule_based_template",

@@ -53,23 +53,46 @@ class Settings(BaseSettings):
         description="Whether API authentication is enforced on sensitive endpoints",
     )
 
-    auth_provider: Literal["clerk", "keycloak"] = Field(default="clerk", validation_alias="SECURE_SMTP_AUTH_PROVIDER")
+    auth_provider: Literal["clerk", "keycloak", "mongodb", "native"] = Field(
+        default="clerk", validation_alias="SECURE_SMTP_AUTH_PROVIDER"
+    )
     offline_issuer: str = Field(default="", validation_alias="SECURE_SMTP_OFFLINE_ISSUER")
     offline_jwks_url: str = Field(default="", validation_alias="SECURE_SMTP_OFFLINE_JWKS_URL")
 
     clerk_issuer: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_ISSUER")
     clerk_audience: str = Field(default="", validation_alias="SECURE_SMTP_CLERK_AUDIENCE")
-    clerk_authorized_parties: list[str] | str = Field(default_factory=list, validation_alias="SECURE_SMTP_CLERK_AUTHORIZED_PARTIES")
-    public_registration: bool = Field(default=True, validation_alias="SECURE_SMTP_PUBLIC_REGISTRATION")
+    clerk_authorized_parties: list[str] | str = Field(
+        default_factory=list, validation_alias="SECURE_SMTP_CLERK_AUTHORIZED_PARTIES"
+    )
+    public_registration: bool = Field(
+        default=True, validation_alias="SECURE_SMTP_PUBLIC_REGISTRATION"
+    )
     pilot_org_id: str = Field(default="", validation_alias="SECURE_SMTP_PILOT_ORG_ID")
-    max_upload_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024, validation_alias="SECURE_SMTP_MAX_UPLOAD_BYTES")
-    max_capture_packets: int = Field(default=100000, ge=1, validation_alias="SECURE_SMTP_MAX_CAPTURE_PACKETS")
-    max_capture_streams: int = Field(default=2000, ge=1, validation_alias="SECURE_SMTP_MAX_CAPTURE_STREAMS")
-    analysis_timeout_seconds: int = Field(default=120, ge=1, validation_alias="SECURE_SMTP_ANALYSIS_TIMEOUT_SECONDS")
+    max_upload_bytes: int = Field(
+        default=25 * 1024 * 1024,
+        ge=1,
+        le=100 * 1024 * 1024,
+        validation_alias="SECURE_SMTP_MAX_UPLOAD_BYTES",
+    )
+    max_capture_packets: int = Field(
+        default=100000, ge=1, validation_alias="SECURE_SMTP_MAX_CAPTURE_PACKETS"
+    )
+    max_capture_streams: int = Field(
+        default=2000, ge=1, validation_alias="SECURE_SMTP_MAX_CAPTURE_STREAMS"
+    )
+    analysis_timeout_seconds: int = Field(
+        default=120, ge=1, validation_alias="SECURE_SMTP_ANALYSIS_TIMEOUT_SECONDS"
+    )
 
-    agent_allow_insecure_local: bool = Field(default=False, validation_alias="SECURE_SMTP_AGENT_ALLOW_INSECURE_LOCAL")
-    retention_days: int = Field(default=30, ge=1, le=3650, validation_alias="SECURE_SMTP_RETENTION_DAYS")
-    agent_offline_seconds: int = Field(default=90, ge=30, validation_alias="SECURE_SMTP_AGENT_OFFLINE_SECONDS")
+    agent_allow_insecure_local: bool = Field(
+        default=False, validation_alias="SECURE_SMTP_AGENT_ALLOW_INSECURE_LOCAL"
+    )
+    retention_days: int = Field(
+        default=30, ge=1, le=3650, validation_alias="SECURE_SMTP_RETENTION_DAYS"
+    )
+    agent_offline_seconds: int = Field(
+        default=90, ge=30, validation_alias="SECURE_SMTP_AGENT_OFFLINE_SECONDS"
+    )
     neo4j_uri: str = Field(default="", validation_alias="SECURE_SMTP_NEO4J_URI")
     neo4j_user: str = Field(default="neo4j", validation_alias="SECURE_SMTP_NEO4J_USER")
     neo4j_password: str = Field(default="", validation_alias="SECURE_SMTP_NEO4J_PASSWORD")
@@ -124,6 +147,7 @@ class Settings(BaseSettings):
     @classmethod
     def parse_comma_separated_list(cls, v):
         import json
+
         if isinstance(v, str):
             v = v.strip()
             if not v:
@@ -135,7 +159,11 @@ class Settings(BaseSettings):
                         return [str(item).strip() for item in parsed if str(item).strip()]
                 except Exception:
                     inner = v[1:-1].strip()
-                    return [item.strip().strip("\"'") for item in inner.split(",") if item.strip().strip("\"'")]
+                    return [
+                        item.strip().strip("\"'")
+                        for item in inner.split(",")
+                        if item.strip().strip("\"'")
+                    ]
             return [item.strip() for item in v.split(",") if item.strip()]
         if isinstance(v, list):
             return [str(item).strip() for item in v if str(item).strip()]
@@ -221,7 +249,9 @@ class Settings(BaseSettings):
             if self.mongo_auth_db:
                 query_params.append(f"authSource={urllib.parse.quote_plus(self.mongo_auth_db)}")
             if self.mongo_auth_mechanism:
-                query_params.append(f"authMechanism={urllib.parse.quote_plus(self.mongo_auth_mechanism)}")
+                query_params.append(
+                    f"authMechanism={urllib.parse.quote_plus(self.mongo_auth_mechanism)}"
+                )
             query_str = f"?{'&'.join(query_params)}" if query_params else ""
             return f"mongodb://{user_enc}:{pwd_enc}@{self.mongo_host}:{self.mongo_port}/{self.mongo_db}{query_str}"
         elif self.mongo_user:

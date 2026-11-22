@@ -51,7 +51,9 @@ class AnomalyDetector:
             feature_matrix: (N, num_features) feature matrix from all sessions.
         """
         if len(feature_matrix) < 5:
-            logger.warning("Insufficient data for global anomaly model (%d samples)", len(feature_matrix))
+            logger.warning(
+                "Insufficient data for global anomaly model (%d samples)", len(feature_matrix)
+            )
             return
 
         self.global_model = IsolationForest(
@@ -87,7 +89,9 @@ class AnomalyDetector:
         )
         model.fit(feature_matrix)
         self.host_models[host_ip] = model
-        logger.info("Fitted per-host anomaly model for %s on %d sessions", host_ip, len(feature_matrix))
+        logger.info(
+            "Fitted per-host anomaly model for %s on %d sessions", host_ip, len(feature_matrix)
+        )
 
     def score_session(
         self,
@@ -138,7 +142,9 @@ class AnomalyDetector:
             )
 
         except Exception as e:
-            logger.warning("Anomaly scoring failed for session %d: %s", feature_vector.session_id, e)
+            logger.warning(
+                "Anomaly scoring failed for session %d: %s", feature_vector.session_id, e
+            )
             return AnomalyScore(
                 session_id=feature_vector.session_id,
                 anomaly_score=0.0,
@@ -152,10 +158,7 @@ class AnomalyDetector:
         host_ips: list[str],
     ) -> list[AnomalyScore]:
         """Score multiple sessions at once."""
-        return [
-            self.score_session(fv, host_ip)
-            for fv, host_ip in zip(feature_vectors, host_ips)
-        ]
+        return [self.score_session(fv, host_ip) for fv, host_ip in zip(feature_vectors, host_ips)]
 
     def save(self, path: str | Path) -> None:
         """Save the anomaly detector state."""

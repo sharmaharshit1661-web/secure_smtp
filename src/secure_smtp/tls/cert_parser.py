@@ -197,7 +197,9 @@ def parse_certificate_chain(
     # If the chain has only one cert that is self-signed, it's still valid
     # (but the rule engine will flag self-signed as a finding)
     if len(parsed) == 1 and parsed[0].self_signed:
-        parsed[0].chain_valid = None  # Trust and signatures are not validated by issuer-name matching.
+        parsed[
+            0
+        ].chain_valid = None  # Trust and signatures are not validated by issuer-name matching.
 
     # Check if the chain is complete (root should be self-signed or trusted)
     if parsed and not parsed[-1].self_signed:
